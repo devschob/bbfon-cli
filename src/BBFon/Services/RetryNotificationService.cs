@@ -11,7 +11,7 @@ public sealed class RetryNotificationService : INotificationService
 
     public RetryNotificationService(INotificationService inner) => _inner = inner;
 
-    public async Task SendAsync(string message)
+    public async Task SendAsync(string message, IReadOnlyList<string>? attachments = null)
     {
         for (int attempt = 1; attempt <= MaxAttempts; attempt++)
         {
@@ -19,7 +19,7 @@ public sealed class RetryNotificationService : INotificationService
 
             try
             {
-                await _inner.SendAsync(message);
+                await _inner.SendAsync(message, attachments);
                 return;
             }
             catch (Exception ex)

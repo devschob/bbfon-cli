@@ -8,6 +8,7 @@ public sealed class AudioMonitorService : IDisposable
     private readonly INotificationService _notification;
     private readonly bool _recordingEnabled;
     private readonly bool _debugMode;
+    private readonly CameraRecorderService? _camera;
     private WaveInEvent? _waveIn;
     private DateTime _lastSent = DateTime.MinValue;
     private volatile bool _stopping;
@@ -16,15 +17,17 @@ public sealed class AudioMonitorService : IDisposable
     private WaveFileWriter? _waveWriter;
     private string? _currentWavPath;
     private DateTime _recordingStopAt;
+    private Task<string?>? _currentCameraTask;
 
     private readonly List<DateTime> _triggerTimestamps = [];
 
-    public AudioMonitorService(AppConfig config, INotificationService notification, bool recordingEnabled, bool debugMode)
+    public AudioMonitorService(AppConfig config, INotificationService notification, bool recordingEnabled, bool debugMode, CameraRecorderService? camera = null)
     {
         _config = config;
         _notification = notification;
         _recordingEnabled = recordingEnabled;
         _debugMode = debugMode;
+        _camera = camera;
     }
 
     public void Start(CancellationToken ct)
@@ -43,7 +46,14 @@ public sealed class AudioMonitorService : IDisposable
             if (_config.Recording.MaxFiles > 0) limits.Add($"max. {_config.Recording.MaxFiles} Dateien");
             if (_config.Recording.MaxAgeDays > 0) limits.Add($"max. {_config.Recording.MaxAgeDays} Tage");
             var limitInfo = limits.Count > 0 ? $", Bereinigung: {string.Join(", ", limits)}" : "";
-            ConsoleLog.Info($"[BBFon] Aufnahme bei Alarm: aktiv (max. 10s, WAV neben EXE{limitInfo})");
+            ConsoleLog.Info($"[BBFon] Audio-Aufnahme bei Alarm: aktiv (max. 10s, WAV neben EXE{limitInfo})");
+        }
+
+        if (_camera != null)
+        {
+            var fmt = _config.Camera.Format.ToUpperInvariant();
+            var mux = _config.Camera.MuxWithAudio && _recordingEnabled ? ", mit Audio" : "";
+            ConsoleLog.Info($"[BBFon] Kamera-Aufnahme bei Alarm: aktiv ({_config.Camera.DurationSeconds}s, {fmt}{mux})");
         }
 
         if (_debugMode)
@@ -131,8 +141,8 @@ public sealed class AudioMonitorService : IDisposable
             triggerCount = _triggerTimestamps.Count;
         }
 
-        bool analysisOk  = _config.Analysis.Enabled ? triggerCount >= _config.Analysis.MinTriggerCount : aboveThreshold;
-        bool cooldownOk  = (now - _lastSent).TotalSeconds >= _config.CooldownSeconds;
+        bool analysisOk = _config.Analysis.Enabled ? triggerCount >= _config.Analysis.MinTriggerCount : aboveThreshold;
+        bool cooldownOk = (now - _lastSent).TotalSeconds >= _config.CooldownSeconds;
 
         // Rollende Konsolenzeile
         var lineColor = analysisOk ? ConsoleColor.Red : aboveThreshold ? ConsoleColor.Yellow : ConsoleColor.Gray;
@@ -158,23 +168,48 @@ public sealed class AudioMonitorService : IDisposable
 
             ConsoleLog.Alarm($"\n[{now:HH:mm:ss}] ALARM! Lautstärke {rms:F3} >= {_config.Threshold:F2}. Sende Nachricht...");
 
+            var timestamp = now.ToString("yyyy-MM-dd_HH-mm-ss");
+
+            // Kamera starten
+            if (_camera != null)
+                _currentCameraTask = Task.Run(() => _camera.RecordAsync(timestamp));
+
             if (_recordingEnabled && !_isRecording)
-                StartRecording(e.Buffer, e.BytesRecorded);
+            {
+                // Audio-Aufnahme starten – StopRecording koordiniert danach Camera + Muxing
+                StartRecording(e.Buffer, e.BytesRecorded, timestamp);
+            }
+            else if (_camera != null)
+            {
+                // Nur Kamera aktiv (kein --record) – unabhängig behandeln
+                var camTask = _currentCameraTask;
+                _currentCameraTask = null;
+                _ = Task.Run(async () =>
+                {
+                    var path = await (camTask ?? Task.FromResult<string?>(null));
+                    if (path != null)
+                    {
+                        ConsoleLog.Success($"[{DateTime.Now:HH:mm:ss}] Kamera-Aufnahme: {Path.GetFileName(path)}");
+                        await TrySendAttachmentsAsync([path]);
+                    }
+                    CleanupRecordings();
+                });
+            }
 
             _ = SendNotificationAsync();
         }
     }
 
-    private void StartRecording(byte[] firstBuffer, int bytesRecorded)
+    private void StartRecording(byte[] firstBuffer, int bytesRecorded, string timestamp)
     {
-        var filename = $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.wav";
+        var filename = $"{timestamp}.wav";
         var path = Path.Combine(AppContext.BaseDirectory, filename);
         _waveWriter = new WaveFileWriter(path, _waveIn!.WaveFormat);
         _currentWavPath = path;
         _recordingStopAt = DateTime.Now.AddSeconds(10);
         _isRecording = true;
         _waveWriter.Write(firstBuffer, 0, bytesRecorded);
-        ConsoleLog.Info($"[{DateTime.Now:HH:mm:ss}] Aufnahme gestartet: {filename}");
+        ConsoleLog.Info($"[{DateTime.Now:HH:mm:ss}] Audio-Aufnahme gestartet: {filename}");
     }
 
     private void StopRecording()
@@ -182,26 +217,56 @@ public sealed class AudioMonitorService : IDisposable
         _isRecording = false;
         _waveWriter?.Dispose();
         _waveWriter = null;
-        ConsoleLog.Info($"\n[{DateTime.Now:HH:mm:ss}] Aufnahme beendet (10s).");
+        ConsoleLog.Info($"\n[{DateTime.Now:HH:mm:ss}] Audio-Aufnahme beendet (10s).");
 
-        if (_config.Compression.Enabled && _currentWavPath != null)
+        var wavPath    = _currentWavPath;
+        var cameraTask = _currentCameraTask;
+        _currentWavPath    = null;
+        _currentCameraTask = null;
+
+        _ = Task.Run(async () =>
         {
-            var wavPath = _currentWavPath;
-            _ = Task.Run(async () =>
+            // Kamera-Aufnahme abwarten
+            string? videoPath = null;
+            if (cameraTask != null)
+            {
+                videoPath = await cameraTask;
+                if (videoPath != null)
+                    ConsoleLog.Success($"[{DateTime.Now:HH:mm:ss}] Kamera-Aufnahme: {Path.GetFileName(videoPath)}");
+            }
+
+            // WAV in Video einbetten – vor Komprimierung, damit WAV noch vorhanden ist
+            if (_camera != null && videoPath != null && _config.Camera.MuxWithAudio
+                && wavPath != null && File.Exists(wavPath))
+            {
+                var muxed = await _camera.MuxAsync(videoPath, wavPath);
+                if (muxed != null)
+                    ConsoleLog.Success($"[BBFon] Audio eingebettet: {Path.GetFileName(muxed)}");
+            }
+
+            // Audio komprimieren – endgültigen Pfad für Anhang merken
+            string? finalAudioPath = wavPath;
+            if (_config.Compression.Enabled && wavPath != null)
             {
                 var compressor = new AudioCompressorService(_config.Compression);
                 var result = await compressor.CompressAsync(wavPath);
                 if (result != null)
+                {
                     ConsoleLog.Success($"[BBFon] Komprimiert: {Path.GetFileName(result)}");
-                CleanupRecordings();
-            });
-        }
-        else
-        {
-            CleanupRecordings();
-        }
+                    finalAudioPath = result;
+                }
+            }
 
-        _currentWavPath = null;
+            // Anhänge senden (nach Muxing + Komprimierung, damit endgültige Dateien vorliegen)
+            var attachments = new List<string>();
+            if (finalAudioPath != null && File.Exists(finalAudioPath))
+                attachments.Add(finalAudioPath);
+            if (videoPath != null && File.Exists(videoPath))
+                attachments.Add(videoPath);
+            await TrySendAttachmentsAsync(attachments);
+
+            CleanupRecordings();
+        });
     }
 
     private void CleanupRecordings()
@@ -209,9 +274,12 @@ public sealed class AudioMonitorService : IDisposable
         var cfg = _config.Recording;
         if (cfg.MaxFiles <= 0 && cfg.MaxAgeDays <= 0) return;
 
-        // Alle Aufnahme-Dateien (WAV + komprimierte Formate) zusammenfassen
-        var patterns = new[] { "????-??-??_??-??-??.wav", "????-??-??_??-??-??.mp3",
-                                "????-??-??_??-??-??.ogg", "????-??-??_??-??-??.m4a" };
+        var patterns = new[] {
+            "????-??-??_??-??-??.wav",     "????-??-??_??-??-??.mp3",
+            "????-??-??_??-??-??.ogg",     "????-??-??_??-??-??.m4a",
+            "????-??-??_??-??-??_cam.mp4", "????-??-??_??-??-??_cam.avi",
+            "????-??-??_??-??-??_cam.mkv", "????-??-??_??-??-??_cam.gif"
+        };
         var files = patterns
             .SelectMany(p => Directory.GetFiles(AppContext.BaseDirectory, p))
             .Select(f => new FileInfo(f))
@@ -244,6 +312,20 @@ public sealed class AudioMonitorService : IDisposable
             {
                 ConsoleLog.Warning($"[BBFon] Löschen fehlgeschlagen ({Path.GetFileName(path)}): {ex.Message}");
             }
+        }
+    }
+
+    private async Task TrySendAttachmentsAsync(IReadOnlyList<string> attachments)
+    {
+        if (!_config.Recording.SendAttachments || attachments.Count == 0) return;
+        try
+        {
+            await _notification.SendAsync("", attachments);
+            ConsoleLog.Success($"[BBFon] {attachments.Count} Anhang/Anhänge gesendet.");
+        }
+        catch (Exception ex)
+        {
+            ConsoleLog.Error($"[BBFon] Anhänge senden fehlgeschlagen: {ex.Message}");
         }
     }
 

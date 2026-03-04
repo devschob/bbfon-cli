@@ -27,6 +27,7 @@ BBFon überwacht das Standard-Mikrofon des Windows-PCs und sendet eine Nachricht
 | Mikrofon | Standard-Aufnahmegerät in Windows konfiguriert |
 | Für Signal | Java 17+ (für signal-cli) |
 | Für Telegram | Internetzugang, Telegram-Account |
+| Für Komprimierung / Kamera | FFmpeg (siehe [FFMPEG.md](FFMPEG.md)) |
 
 ---
 
@@ -65,6 +66,41 @@ Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen.
   "CooldownSeconds": 60,
   "Message": "Lärm erkannt!",
   "Provider": "Telegram",
+  "Startup": {
+    "Enabled": false,
+    "Message": "ich wache"
+  },
+  "Analysis": {
+    "Enabled": false,
+    "WindowSeconds": 10,
+    "MinTriggerCount": 3
+  },
+  "Recording": {
+    "MaxFiles": 0,
+    "MaxAgeDays": 0,
+    "SendAttachments": false
+  },
+  "Compression": {
+    "Enabled": false,
+    "FfmpegPath": "ffmpeg.exe",
+    "Format": "opus",
+    "BitrateKbps": 24,
+    "DeleteWavAfterCompress": true
+  },
+  "Camera": {
+    "Enabled": false,
+    "FfmpegPath": "ffmpeg.exe",
+    "DeviceName": "",
+    "DurationSeconds": 10,
+    "Format": "mp4",
+    "MuxWithAudio": false
+  },
+  "Battery": {
+    "Enabled": false,
+    "ThresholdPercent": 20,
+    "CheckIntervalSeconds": 60,
+    "Message": "Batterie niedrig"
+  },
   "Signal": {
     "CliPath": "signal-cli.bat",
     "Sender": "+4912345678",
@@ -85,20 +121,34 @@ Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen.
 | `CooldownSeconds` | `int` | Mindestabstand in Sekunden zwischen zwei Nachrichten. Verhindert Spam. |
 | `Message` | `string` | Text der gesendeten Nachricht. |
 | `Provider` | `string` | Aktiver Dienst: `"Telegram"` oder `"Signal"` (Groß-/Kleinschreibung egal). |
-| `Analysis.Enabled` | `bool` | Analyse aktivieren (`true`) oder deaktivieren (`false`). Bei `false`: jeder einzelne Trigger löst sofort aus. |
-| `Analysis.WindowSeconds` | `int` | Beobachtungsfenster in Sekunden. Nur Trigger innerhalb dieser Zeitspanne werden gezählt. |
-| `Analysis.MinTriggerCount` | `int` | Mindestanzahl an Pegeln >= Schwellwert innerhalb von `WindowSeconds`, bevor eine Nachricht gesendet wird. |
-| `Recording.MaxFiles` | `int` | Maximale Anzahl WAV-Dateien, die behalten werden. Älteste werden gelöscht. `0` = unbegrenzt. |
-| `Recording.MaxAgeDays` | `int` | Dateien älter als diese Anzahl Tage werden gelöscht. `0` = unbegrenzt. |
+| `Startup.Enabled` | `bool` | Beim Start eine Nachricht senden. |
+| `Startup.Message` | `string` | Text der Startnachricht. Standard: `"ich wache"`. |
+| `Analysis.Enabled` | `bool` | Analyse aktivieren. Bei `false`: jeder einzelne Trigger löst sofort aus. |
+| `Analysis.WindowSeconds` | `int` | Beobachtungsfenster in Sekunden. |
+| `Analysis.MinTriggerCount` | `int` | Mindestanzahl Trigger innerhalb von `WindowSeconds` für Alarm. |
+| `Recording.MaxFiles` | `int` | Maximale Anzahl Aufnahme-Dateien. Älteste werden gelöscht. `0` = unbegrenzt. |
+| `Recording.MaxAgeDays` | `int` | Dateien älter als N Tage werden gelöscht. `0` = unbegrenzt. |
+| `Recording.SendAttachments` | `bool` | Aufnahmen nach Fertigstellung als Datei-Anhang senden. |
+| `Compression.Enabled` | `bool` | WAV-Aufnahmen nach Alarm komprimieren (benötigt FFmpeg). |
+| `Compression.FfmpegPath` | `string` | Pfad zu `ffmpeg.exe`. Relativ zur EXE oder absolut. |
+| `Compression.Format` | `string` | Zielformat: `opus`, `mp3`, `aac`. |
+| `Compression.BitrateKbps` | `int` | Ziel-Bitrate in kbps. |
+| `Compression.DeleteWavAfterCompress` | `bool` | Original-WAV nach Komprimierung löschen. |
+| `Camera.Enabled` | `bool` | Kamera-Aufnahme bei Alarm aktivieren (benötigt FFmpeg). |
+| `Camera.FfmpegPath` | `string` | Pfad zu `ffmpeg.exe`. |
+| `Camera.DeviceName` | `string` | DirectShow-Gerätename. Leer = automatisch (erstes Gerät). |
+| `Camera.DurationSeconds` | `int` | Aufnahmedauer in Sekunden. Standard: 10. |
+| `Camera.Format` | `string` | Videoformat: `mp4`, `avi`, `mkv`, `gif`. |
+| `Camera.MuxWithAudio` | `bool` | WAV-Audio in Video einbetten. Erfordert aktive Audio-Aufnahme (`-r`). |
 | `Battery.Enabled` | `bool` | Batterie-Überwachung aktivieren. |
 | `Battery.ThresholdPercent` | `int` | Ladestand in Prozent (0–100), unterhalb dessen eine Warnung gesendet wird. |
 | `Battery.CheckIntervalSeconds` | `int` | Prüfintervall in Sekunden. Standard: 60. |
-| `Battery.Message` | `string` | Text der Batterie-Warnung. Der aktuelle Ladestand wird automatisch angehängt: `"Batterie niedrig (18%)"`. |
-| `Signal.CliPath` | `string` | Pfad zu `signal-cli.bat`. Relativ zur EXE oder absoluter Pfad. |
-| `Signal.Sender` | `string` | Handynummer, mit der signal-cli registriert ist (Format: `+49...`). |
+| `Battery.Message` | `string` | Text der Batterie-Warnung. Aktueller Ladestand wird angehängt: `"Batterie niedrig (18%)"`. |
+| `Signal.CliPath` | `string` | Pfad zu `signal-cli.bat`. Relativ zur EXE oder absolut. |
+| `Signal.Sender` | `string` | Handynummer des Absenders (Format: `+49...`). |
 | `Signal.Recipient` | `string` | Ziel-Handynummer (Format: `+49...`). |
-| `Telegram.BotToken` | `string` | Token des Telegram-Bots (von BotFather). |
-| `Telegram.ChatId` | `string` | Chat-ID des Empfängers (Person oder Gruppe). |
+| `Telegram.BotToken` | `string` | Token des Telegram-Bots (von BotFather). Wird durch `--link` automatisch gesetzt. |
+| `Telegram.ChatId` | `string` | Chat-ID des Empfängers. Wird durch `--link` automatisch gesetzt. |
 
 ### Schwellwert bestimmen
 
@@ -115,53 +165,40 @@ Sprich normal in das Mikrofon und notiere typische Werte. Setze `Threshold` etwa
 
 ## 4. Telegram einrichten
 
+Detaillierte Anleitung: [TELEGRAM.md](TELEGRAM.md)
+
 ### Schritt 1 – Bot erstellen
 
 1. Telegram öffnen und `@BotFather` suchen
 2. `/newbot` senden
-3. Einen Namen und einen Benutzernamen vergeben (muss auf `bot` enden, z. B. `MeinBBFonBot`)
+3. Namen und Benutzernamen vergeben (muss auf `bot` enden, z. B. `MeinBBFonBot`)
 4. BotFather antwortet mit dem **Bot-Token**: `1234567890:ABC-xyz...`
 
-### Schritt 2 – Chat-ID herausfinden
+### Schritt 2 – Chat-ID automatisch ermitteln
 
-1. Den eigenen Bot in Telegram suchen und **eine beliebige Nachricht senden** (wichtig, sonst funktioniert getUpdates nicht)
-2. Im Browser folgende URL öffnen (Token einsetzen):
+1. Den eigenen Bot in Telegram suchen und eine Nachricht schreiben (z. B. `/start`)
+2. BBFon mit `--link` und dem Bot-Token aufrufen:
 
-   ```
-   https://api.telegram.org/bot<TOKEN>/getUpdates
-   ```
-
-3. In der JSON-Antwort die `chat.id` ablesen:
-
-   ```json
-   {
-     "result": [{
-       "message": {
-         "chat": {
-           "id": 987654321
-         }
-       }
-     }]
-   }
-   ```
-
-4. Diese Zahl als `ChatId` in `appsettings.json` eintragen.
-
-### Schritt 3 – appsettings.json befüllen
-
-```json
-"Provider": "Telegram",
-"Telegram": {
-  "BotToken": "1234567890:ABC-xyz...",
-  "ChatId": "987654321"
-}
+```cmd
+BBFon.exe --link 1234567890:ABC-xyz...
 ```
+
+BBFon findet die Chat-ID und speichert **Token + Chat-ID automatisch** in `appsettings.json`:
+
+```
+[BBFon] Chat-ID gefunden: 987654321  (Max Mustermann @maxmuster)
+[BBFon] appsettings.json aktualisiert: BotToken + ChatId (987654321).
+```
+
+Danach ist BBFon direkt einsatzbereit.
+
+> **Keine Nachrichten gefunden?** Erst eine Nachricht an den Bot schreiben, dann `--link` erneut ausführen.
 
 ### Nachrichten an eine Gruppe senden
 
 1. Bot zur Gruppe hinzufügen
 2. Eine Nachricht in der Gruppe schreiben
-3. `getUpdates` aufrufen – Gruppen-Chat-IDs sind **negativ**, z. B. `-1001234567890`
+3. `--link` aufrufen – Gruppen-Chat-IDs sind **negativ**, z. B. `-1001234567890`
 
 ---
 
@@ -257,11 +294,19 @@ Wenn die Nachricht ankommt, ist alles korrekt konfiguriert.
 
 | Parameter | Kurzform | Beschreibung |
 |---|---|---|
-| `--record` | `-r` | Alarm-Aufnahme aktivieren (WAV neben EXE) |
+| `--record` | `-r` | Audio-Aufnahme bei Alarm aktivieren (WAV neben EXE) |
+| `--video` | `-v` | Kamera-Aufnahme bei Alarm aktivieren (benötigt FFmpeg) |
 | `--debug` | `-d` | Debug-Modus: keine Nachrichten, ausführliche Konsolenausgabe |
-| `--test` | – | Sendet sofort eine Testnachricht und beendet sich – zum Prüfen der Konfiguration |
-| `--calibrate` | – | Misst 10s Hintergrundrauschen und schlägt automatisch einen `Threshold`-Wert vor |
-| `--link` | – | Signal-Verlinkung: QR-Code in Konsole anzeigen und auf Scan warten (nur bei Provider = Signal) |
+| `--test` | – | Sendet sofort eine Testnachricht und beendet sich |
+| `--calibrate` | – | Misst 10s Hintergrundrauschen und schlägt `Threshold`-Wert vor |
+| `--link` | – | **Signal:** QR-Code anzeigen und verknüpfen. **Telegram:** `--link <TOKEN>` – Chat-ID ermitteln und in appsettings.json speichern |
+| `--list-cameras` | – | Verfügbare DirectShow-Kamerageräte anzeigen (benötigt FFmpeg) |
+
+Parameter können kombiniert werden:
+
+```cmd
+BBFon.exe --record --video --debug
+```
 
 Parameter können kombiniert werden:
 
@@ -366,17 +411,30 @@ BBFon\
 ```
 bbfon/
 ├── SETUP.md                          ← diese Datei
+├── TELEGRAM.md                       ← Telegram-Einrichtung (Details)
+├── FFMPEG.md                         ← FFmpeg-Installation & Kamera-Konfiguration
+├── SIGNAL-CLI.md                     ← Signal-CLI-Einrichtung (Details)
 └── src/
     └── BBFon/
         ├── BBFon.csproj              ← Projektdatei (Target: net8.0-windows)
-        ├── Program.cs                ← Einstiegspunkt, Konfiguration laden
+        ├── Program.cs                ← Einstiegspunkt, Konfiguration, CLI-Parameter
         ├── AppConfig.cs              ← Konfigurationsmodell
         ├── appsettings.json          ← Benutzer-Konfiguration
         └── Services/
-            ├── INotificationService.cs          ← Interface für Benachrichtigungen
-            ├── AudioMonitorService.cs           ← Mikrofon-Überwachung (NAudio)
-            ├── SignalNotificationService.cs     ← Signal-Versand via signal-cli
-            └── TelegramNotificationService.cs  ← Telegram-Versand via Bot API
+            ├── INotificationService.cs           ← Interface (SendAsync mit Anhängen)
+            ├── AudioMonitorService.cs            ← Mikrofon-Überwachung (NAudio)
+            ├── CameraRecorderService.cs          ← Kamera-Aufnahme via FFmpeg/DirectShow
+            ├── AudioCompressorService.cs         ← Audio-Komprimierung via FFmpeg
+            ├── SignalNotificationService.cs      ← Signal-Versand via signal-cli
+            ├── TelegramNotificationService.cs    ← Telegram-Versand via Bot API
+            ├── RetryNotificationService.cs       ← Retry + Netzwerk-Wartelogik
+            ├── LinkService.cs                    ← Signal-Verlinkung (QR-Code)
+            ├── TelegramLinkService.cs            ← Telegram Chat-ID-Ermittlung
+            ├── BatteryMonitorService.cs          ← Batterie-Überwachung (Win32 API)
+            ├── CalibrateService.cs               ← Threshold-Kalibrierung
+            ├── SleepPreventionService.cs         ← Schlafmodus verhindern
+            ├── ConfigValidator.cs                ← Konfigurationsvalidierung
+            └── ConsoleLog.cs                     ← Thread-sichere farbige Ausgabe
 ```
 
 ---
@@ -436,17 +494,41 @@ Nach einem Alarm wird die Triggerliste geleert, damit der nächste Alarm von vor
 | Nur bei anhaltendem Lärm melden | 15 | 8 |
 | Empfindlich, aber nicht bei Einzelgeräuschen | 10 | 3 |
 
-### Alarm-Aufnahme
+### Audio-Aufnahme
 
 Wenn `--record` / `-r` übergeben wird, startet bei jedem Alarm eine WAV-Aufnahme:
 
-- Das Audio-Buffer, der den Alarm ausgelöst hat, ist der erste Chunk der Datei (kein Aussetzer am Anfang)
-- Nach jeder Aufnahme werden automatisch alte Dateien bereinigt (sofern `MaxFiles` oder `MaxAgeDays` gesetzt)
+- Der erste Audio-Buffer, der den Alarm ausgelöst hat, ist Bestandteil der Aufnahme (kein Aussetzer)
 - Aufgenommen wird maximal **10 Sekunden**
 - Dateiname: `yyyy-MM-dd_HH-mm-ss.wav` (z. B. `2026-03-03_12-34-05.wav`)
 - Speicherort: selber Ordner wie die `BBFon.exe`
-- Format: WAV, 16.000 Hz, Mono, 16 Bit (ca. 320 KB pro Aufnahme)
-- Während des Cooldowns wird keine neue Aufnahme gestartet
+- Format: WAV, 16.000 Hz, Mono, 16 Bit (~320 KB)
+- Nach der Aufnahme: optionale Komprimierung → optional Versand als Anhang → Bereinigung alter Dateien
+
+### Kamera-Aufnahme
+
+Wenn `--video` / `-v` oder `Camera.Enabled: true` aktiv ist, startet bei jedem Alarm eine Kamera-Aufnahme (benötigt FFmpeg):
+
+- Läuft **parallel** zur Audio-Aufnahme, blockiert keine Meldungen
+- Dateiname: `yyyy-MM-dd_HH-mm-ss_cam.mp4` (gleicher Timestamp wie die Audio-Datei)
+- Kamera wird beim ersten Alarm automatisch erkannt (`--list-cameras` für manuelle Auswahl)
+- Format `gif`: erst MP4 aufnehmen, dann zu GIF konvertieren, MP4 wird gelöscht
+- `MuxWithAudio: true`: nach beiden Aufnahmen wird das WAV als Tonspur in das Video eingebettet
+
+**Reihenfolge bei aktivem Muxing:**
+1. Audio + Video parallel aufnehmen
+2. WAV in Video einbetten
+3. Audio komprimieren (falls aktiv)
+4. Anhänge senden (falls aktiv)
+5. Alte Dateien bereinigen
+
+### Anhänge senden
+
+Mit `Recording.SendAttachments: true` werden die fertigen Aufnahme-Dateien nach Abschluss aller Nachbearbeitungsschritte automatisch per Telegram/Signal gesendet:
+
+- Telegram: per `sendDocument`-API
+- Signal: per `--attachment`-Flag an signal-cli
+- Bei aktiver Komprimierung: komprimierte Datei statt WAV
 
 ### Cooldown-Mechanismus
 
@@ -454,7 +536,7 @@ Nach jeder gesendeten Nachricht wird der Timestamp gespeichert. Eine neue Nachri
 
 ### Provider-Auswahl
 
-Die Auswahl des Notification-Providers erfolgt in `Program.cs` per `switch`-Expression auf `Provider` (case-insensitiv). Beide Provider implementieren `INotificationService` mit einer einzigen Methode `SendAsync(string message)`.
+Die Auswahl des Notification-Providers erfolgt in `Program.cs` per `switch`-Expression auf `Provider` (case-insensitiv). Beide Provider implementieren `INotificationService` mit `SendAsync(string message, IReadOnlyList<string>? attachments)`. Der `RetryNotificationService` umschließt den gewählten Provider mit Retry-Logik und Netzwerk-Warten.
 
 ### Signal-Integration
 
@@ -462,14 +544,19 @@ Der Aufruf erfolgt als externer Prozess (`System.Diagnostics.Process`). `signal-
 
 ### Telegram-Integration
 
-Einfacher HTTP POST an die Telegram Bot API:
-
+Alarm-Nachricht per HTTP POST:
 ```
 POST https://api.telegram.org/bot<TOKEN>/sendMessage
-Content-Type: application/json
-
 { "chat_id": "...", "text": "..." }
 ```
+
+Datei-Anhang per Multipart-Upload:
+```
+POST https://api.telegram.org/bot<TOKEN>/sendDocument
+document: <binäre Datei>
+```
+
+Weitere Details: [TELEGRAM.md](TELEGRAM.md)
 
 ---
 

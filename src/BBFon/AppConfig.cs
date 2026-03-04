@@ -6,12 +6,20 @@ public class AppConfig
     public int CooldownSeconds { get; set; } = 60;
     public string Message { get; set; } = "Lärm erkannt!";
     public string Provider { get; set; } = "Telegram";
+    public StartupConfig Startup { get; set; } = new();
     public AnalysisConfig Analysis { get; set; } = new();
     public RecordingConfig Recording { get; set; } = new();
     public CompressionConfig Compression { get; set; } = new();
+    public CameraConfig Camera { get; set; } = new();
     public BatteryConfig Battery { get; set; } = new();
     public SignalConfig Signal { get; set; } = new();
     public TelegramConfig Telegram { get; set; } = new();
+}
+
+public class StartupConfig
+{
+    public bool Enabled { get; set; } = false;
+    public string Message { get; set; } = "ich wache";
 }
 
 public class AnalysisConfig
@@ -25,6 +33,7 @@ public class RecordingConfig
 {
     public int MaxFiles { get; set; } = 0;    // 0 = unbegrenzt
     public int MaxAgeDays { get; set; } = 0;  // 0 = unbegrenzt
+    public bool SendAttachments { get; set; } = false;
 }
 
 public class CompressionConfig
@@ -34,6 +43,16 @@ public class CompressionConfig
     public string Format { get; set; } = "opus";   // opus, mp3, aac
     public int BitrateKbps { get; set; } = 24;
     public bool DeleteWavAfterCompress { get; set; } = true;
+}
+
+public class CameraConfig
+{
+    public bool Enabled { get; set; } = false;
+    public string FfmpegPath { get; set; } = "ffmpeg.exe";
+    public string DeviceName { get; set; } = "";   // leer = erstes Gerät automatisch erkennen
+    public int DurationSeconds { get; set; } = 10;
+    public string Format { get; set; } = "mp4";    // mp4, avi, mkv, gif
+    public bool MuxWithAudio { get; set; } = false; // WAV-Aufnahme in Video einbetten
 }
 
 public class BatteryConfig

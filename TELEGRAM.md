@@ -43,47 +43,56 @@ Bewahre diesen Token sicher auf.
 
 ---
 
-## Schritt 2 – Chat-ID herausfinden
+## Schritt 2 – Chat-ID herausfinden und speichern
 
-Die Chat-ID identifiziert, **an wen** der Bot schreibt. Jeder Telegram-Chat (Person, Gruppe, Kanal) hat eine eindeutige ID.
+Die Chat-ID identifiziert, **an wen** der Bot schreibt. BBFon kann das automatisch erledigen.
 
-### Nachrichten an dich selbst empfangen
+### Automatisch mit --link (empfohlen)
 
 1. Den eigenen Bot in Telegram suchen (nach `@MeinBBFonBot` suchen)
-2. Auf **Start** klicken oder `/start` schreiben – das ist zwingend nötig, damit getUpdates einen Eintrag hat
-3. Im Browser folgende URL aufrufen (Token einsetzen):
+2. Auf **Start** klicken oder eine beliebige Nachricht schreiben – damit getUpdates einen Eintrag hat
+3. BBFon mit `--link` und dem Bot-Token aufrufen:
+
+```cmd
+BBFon.exe --link 1234567890:ABCDefGhIJKlmNoPQRsTUVwXyz-1234567
+```
+
+BBFon ruft automatisch `getUpdates` ab, zeigt die gefundene Chat-ID an und speichert **Token und Chat-ID direkt in `appsettings.json`**:
+
+```
+[BBFon] Rufe Telegram getUpdates ab...
+[BBFon] Chat-ID gefunden: 987654321  (Max Mustermann @maxmuster)
+[BBFon] appsettings.json aktualisiert: BotToken + ChatId (987654321).
+```
+
+Danach ist BBFon sofort einsatzbereit – kein manuelles Eintragen nötig.
+
+> **Keine Nachrichten gefunden?** → `"Senden Sie zuerst eine Nachricht an den Bot, dann erneut ausführen."` – Schritt 2 oben wiederholen.
+
+> **Mehrere Chats gefunden** (z. B. Bot ist in einer Gruppe)? Alle werden angezeigt, die erste ID wird gespeichert. Ggf. `ChatId` in `appsettings.json` manuell auf die gewünschte ID setzen.
+
+---
+
+### Manuell (Alternative)
+
+Falls `--link` nicht verwendet werden soll:
+
+1. Den eigenen Bot in Telegram suchen und `/start` schreiben
+2. Im Browser folgende URL aufrufen (Token einsetzen):
 
 ```
 https://api.telegram.org/bot1234567890:ABCDefGhIJKlmNoPQRsTUVwXyz-1234567/getUpdates
 ```
 
-4. Die JSON-Antwort enthält die Chat-ID:
+3. Den Wert von `chat.id` aus der JSON-Antwort ablesen und manuell in `appsettings.json` eintragen.
 
-```json
-{
-  "ok": true,
-  "result": [
-    {
-      "message": {
-        "from": { "first_name": "Max" },
-        "chat": {
-          "id": 987654321,
-          "type": "private"
-        },
-        "text": "/start"
-      }
-    }
-  ]
-}
-```
-
-5. Den Wert von `chat.id` (`987654321`) als `ChatId` in `appsettings.json` eintragen.
-
-> **Leere Antwort (`"result": []`)?** Der Bot hat noch keine Nachricht erhalten. Schreibe `/start` an den Bot und rufe die URL erneut auf.
+> **Leere Antwort (`"result": []`)?** Schreibe erst `/start` an den Bot, dann erneut aufrufen.
 
 ---
 
-## Schritt 3 – appsettings.json befüllen
+## Schritt 3 – appsettings.json prüfen
+
+Nach `--link` ist `appsettings.json` bereits vollständig befüllt:
 
 ```json
 "Provider": "Telegram",

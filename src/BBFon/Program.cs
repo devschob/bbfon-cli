@@ -2,11 +2,16 @@ using BBFon;
 using BBFon.Services;
 using Microsoft.Extensions.Configuration;
 
-bool recordingEnabled = args.Contains("--record")    || args.Contains("-r");
-bool debugMode        = args.Contains("--debug")     || args.Contains("-d");
-bool linkMode         = args.Contains("--link");
-bool testMode         = args.Contains("--test");
-bool calibrateMode    = args.Contains("--calibrate");
+bool recordingEnabled  = args.Contains("--record")       || args.Contains("-r");
+bool videoEnabled      = args.Contains("--video")        || args.Contains("-v");
+bool debugMode         = args.Contains("--debug")        || args.Contains("-d");
+bool linkMode          = args.Contains("--link");
+var  linkArgIdx        = Array.IndexOf(args, "--link");
+var  linkToken         = linkArgIdx >= 0 && linkArgIdx + 1 < args.Length && !args[linkArgIdx + 1].StartsWith('-')
+                             ? args[linkArgIdx + 1] : null;
+bool testMode          = args.Contains("--test");
+bool calibrateMode     = args.Contains("--calibrate");
+bool listCamerasMode   = args.Contains("--list-cameras");
 
 var configRoot = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
@@ -16,12 +21,25 @@ var configRoot = new ConfigurationBuilder()
 var appConfig = configRoot.Get<AppConfig>()
     ?? throw new InvalidOperationException("appsettings.json konnte nicht geladen werden.");
 
-// --link: Signal-Verlinkung durchführen und beenden
+// --link: Verlinkung durchführen und beenden
 if (linkMode)
 {
+    if (appConfig.Provider.Equals("Telegram", StringComparison.OrdinalIgnoreCase) || linkToken != null)
+    {
+        var token = linkToken ?? appConfig.Telegram.BotToken;
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            ConsoleLog.Error("[BBFon] Kein Bot-Token angegeben.");
+            ConsoleLog.Error("[BBFon] Verwendung: bbfon --link <BOT_TOKEN>  oder  BotToken in appsettings.json setzen.");
+            return;
+        }
+        await new TelegramLinkService().RunAsync(token);
+        return;
+    }
+
     if (!appConfig.Provider.Equals("Signal", StringComparison.OrdinalIgnoreCase))
     {
-        ConsoleLog.Error("[BBFon] --link ist nur verfügbar wenn Provider = \"Signal\" in appsettings.json.");
+        ConsoleLog.Error($"[BBFon] --link ist nur für Provider \"Signal\" oder \"Telegram\" verfügbar (aktuell: \"{appConfig.Provider}\").");
         return;
     }
     await new LinkService(appConfig.Signal).RunAsync();
@@ -32,6 +50,25 @@ if (linkMode)
 if (calibrateMode)
 {
     await new CalibrateService().RunAsync();
+    return;
+}
+
+// --list-cameras: Verfügbare Kamera-Geräte auflisten
+if (listCamerasMode)
+{
+    var camService = new CameraRecorderService(appConfig.Camera);
+    var devices = await camService.ListDevicesAsync();
+    if (devices.Count == 0)
+    {
+        ConsoleLog.Warning("[BBFon] Keine DirectShow-Videogeräte gefunden. Ist ffmpeg installiert?");
+    }
+    else
+    {
+        ConsoleLog.Info("[BBFon] Verfügbare Kamera-Geräte:");
+        foreach (var d in devices)
+            ConsoleLog.Info($"  - \"{d}\"");
+        ConsoleLog.Info("[BBFon] Trage den gewünschten Namen als Camera.DeviceName in appsettings.json ein.");
+    }
     return;
 }
 
@@ -61,6 +98,20 @@ INotificationService baseNotification = debugMode
 INotificationService notification = debugMode
     ? baseNotification
     : new RetryNotificationService(baseNotification);
+
+// Startnachricht senden
+if (appConfig.Startup.Enabled && !debugMode)
+{
+    try
+    {
+        await notification.SendAsync(appConfig.Startup.Message);
+        ConsoleLog.Success($"[BBFon] Startnachricht gesendet: \"{appConfig.Startup.Message}\"");
+    }
+    catch (Exception ex)
+    {
+        ConsoleLog.Warning($"[BBFon] Startnachricht fehlgeschlagen: {ex.Message}");
+    }
+}
 
 // --test: Testnachricht senden und beenden
 if (testMode)
@@ -116,7 +167,11 @@ if (appConfig.Battery.Enabled)
     _ = Task.Run(() => batteryMonitor.RunAsync(cts.Token));
 }
 
-using var monitor = new AudioMonitorService(appConfig, notification, recordingEnabled, debugMode);
+CameraRecorderService? camera = (appConfig.Camera.Enabled || videoEnabled)
+    ? new CameraRecorderService(appConfig.Camera)
+    : null;
+
+using var monitor = new AudioMonitorService(appConfig, notification, recordingEnabled, debugMode, camera);
 monitor.Start(cts.Token);
 
 ConsoleLog.Info("\n[BBFon] Beendet.");
@@ -130,9 +185,17 @@ static void PrintSettings(AppConfig cfg)
     ConsoleLog.Info($"[BBFon]   Schwellwert:    {cfg.Threshold:F2}");
     ConsoleLog.Info($"[BBFon]   Cooldown:       {cfg.CooldownSeconds}s");
     ConsoleLog.Info($"[BBFon]   Nachricht:      {cfg.Message}");
+    ConsoleLog.Info($"[BBFon]   Startnachricht: {(cfg.Startup.Enabled ? $"\"{cfg.Startup.Message}\"" : "inaktiv")}");
     ConsoleLog.Info($"[BBFon]   Analyse:        {(cfg.Analysis.Enabled ? $"aktiv ({cfg.Analysis.MinTriggerCount}x in {cfg.Analysis.WindowSeconds}s)" : "inaktiv")}");
-    ConsoleLog.Info($"[BBFon]   Aufnahme:       {(cfg.Recording.MaxFiles > 0 || cfg.Recording.MaxAgeDays > 0 ? $"Bereinigung: max. {cfg.Recording.MaxFiles} Dateien / {cfg.Recording.MaxAgeDays} Tage" : "keine Bereinigung")}");
+    var recParts = new List<string>();
+    if (cfg.Recording.MaxFiles > 0)  recParts.Add($"max. {cfg.Recording.MaxFiles} Dateien");
+    if (cfg.Recording.MaxAgeDays > 0) recParts.Add($"max. {cfg.Recording.MaxAgeDays} Tage");
+    if (cfg.Recording.SendAttachments) recParts.Add("Anhänge senden");
+    ConsoleLog.Info($"[BBFon]   Aufnahme:       {(recParts.Count > 0 ? string.Join(", ", recParts) : "keine Bereinigung, kein Senden")}");
     ConsoleLog.Info($"[BBFon]   Komprimierung:  {(cfg.Compression.Enabled ? $"aktiv ({cfg.Compression.Format.ToUpperInvariant()}, {cfg.Compression.BitrateKbps}kbps, WAV löschen: {cfg.Compression.DeleteWavAfterCompress})" : "inaktiv")}");
+    var camDevice = string.IsNullOrWhiteSpace(cfg.Camera.DeviceName) ? "auto" : $"\"{cfg.Camera.DeviceName}\"";
+    var camMux    = cfg.Camera.MuxWithAudio ? ", mit Audio" : "";
+    ConsoleLog.Info($"[BBFon]   Kamera:         {(cfg.Camera.Enabled ? $"aktiv ({cfg.Camera.DurationSeconds}s, {cfg.Camera.Format.ToUpperInvariant()}{camMux}, Gerät: {camDevice})" : "inaktiv (--video zum Aktivieren)")}");
     ConsoleLog.Info($"[BBFon]   Batterie:       {(cfg.Battery.Enabled ? $"aktiv (< {cfg.Battery.ThresholdPercent}%, alle {cfg.Battery.CheckIntervalSeconds}s)" : "inaktiv")}");
     ConsoleLog.Info("[BBFon] -------------------------");
 }
