@@ -6,7 +6,6 @@ public sealed class AudioMonitorService : IDisposable
 {
     private readonly AppConfig _config;
     private readonly INotificationService _notification;
-    private readonly bool _recordingEnabled;
     private readonly bool _debugMode;
     private readonly CameraRecorderService? _camera;
     private WaveInEvent? _waveIn;
@@ -21,11 +20,10 @@ public sealed class AudioMonitorService : IDisposable
 
     private readonly List<DateTime> _triggerTimestamps = [];
 
-    public AudioMonitorService(AppConfig config, INotificationService notification, bool recordingEnabled, bool debugMode, CameraRecorderService? camera = null)
+    public AudioMonitorService(AppConfig config, INotificationService notification, bool debugMode, CameraRecorderService? camera = null)
     {
         _config = config;
         _notification = notification;
-        _recordingEnabled = recordingEnabled;
         _debugMode = debugMode;
         _camera = camera;
     }
@@ -40,7 +38,7 @@ public sealed class AudioMonitorService : IDisposable
         if (_config.Analysis.Enabled)
             ConsoleLog.Info($"[BBFon] Analyse aktiv: mind. {_config.Analysis.MinTriggerCount}x Trigger in {_config.Analysis.WindowSeconds}s");
 
-        if (_recordingEnabled)
+        if (_config.Recording.Enabled)
         {
             var limits = new List<string>();
             if (_config.Recording.MaxFiles > 0) limits.Add($"max. {_config.Recording.MaxFiles} Dateien");
@@ -52,8 +50,8 @@ public sealed class AudioMonitorService : IDisposable
         if (_camera != null)
         {
             var fmt = _config.Camera.Format.ToUpperInvariant();
-            var mux = _config.Camera.MuxWithAudio && _recordingEnabled ? ", mit Audio" : "";
-            ConsoleLog.Info($"[BBFon] Kamera-Aufnahme bei Alarm: aktiv ({_config.Camera.DurationSeconds}s, {fmt}{mux})");
+            var mux = _config.Camera.MuxWithAudio && _config.Recording.Enabled && _config.Camera.Enabled ? ", mit Audio" : "";
+            ConsoleLog.Info($"[BBFon] Kamera-Aufnahme bei Alarm: aktiv ({_config.Recording.DurationSeconds}s, {fmt}{mux})");
         }
 
         if (_debugMode)
@@ -174,10 +172,10 @@ public sealed class AudioMonitorService : IDisposable
             if (_camera != null)
                 _currentCameraTask = Task.Run(() => _camera.RecordAsync(timestamp));
 
-            if (_recordingEnabled && !_isRecording)
+            if (_config.Recording.Enabled && !_isRecording)
             {
                 // Audio-Aufnahme starten – StopRecording koordiniert danach Camera + Muxing
-                StartRecording(e.Buffer, e.BytesRecorded, timestamp);
+                StartRecording(e.Buffer, e.BytesRecorded, timestamp, _config.Recording.DurationSeconds);
             }
             else if (_camera != null)
             {
@@ -200,13 +198,13 @@ public sealed class AudioMonitorService : IDisposable
         }
     }
 
-    private void StartRecording(byte[] firstBuffer, int bytesRecorded, string timestamp)
+    private void StartRecording(byte[] firstBuffer, int bytesRecorded, string timestamp, double durationSeconds)
     {
         var filename = $"{timestamp}.wav";
         var path = Path.Combine(AppContext.BaseDirectory, filename);
         _waveWriter = new WaveFileWriter(path, _waveIn!.WaveFormat);
         _currentWavPath = path;
-        _recordingStopAt = DateTime.Now.AddSeconds(10);
+        _recordingStopAt = DateTime.Now.AddSeconds(durationSeconds);
         _isRecording = true;
         _waveWriter.Write(firstBuffer, 0, bytesRecorded);
         ConsoleLog.Info($"[{DateTime.Now:HH:mm:ss}] Audio-Aufnahme gestartet: {filename}");

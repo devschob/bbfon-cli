@@ -2,8 +2,7 @@ using BBFon;
 using BBFon.Services;
 using Microsoft.Extensions.Configuration;
 
-bool recordingEnabled  = args.Contains("--record")       || args.Contains("-r");
-bool videoEnabled      = args.Contains("--video")        || args.Contains("-v");
+
 bool debugMode         = args.Contains("--debug")        || args.Contains("-d");
 bool linkMode          = args.Contains("--link");
 var  linkArgIdx        = Array.IndexOf(args, "--link");
@@ -56,7 +55,7 @@ if (calibrateMode)
 // --list-cameras: Verfügbare Kamera-Geräte auflisten
 if (listCamerasMode)
 {
-    var camService = new CameraRecorderService(appConfig.Camera);
+    var camService = new CameraRecorderService(appConfig.Camera, appConfig.Recording);
     var devices = await camService.ListDevicesAsync();
     if (devices.Count == 0)
     {
@@ -167,11 +166,11 @@ if (appConfig.Battery.Enabled)
     _ = Task.Run(() => batteryMonitor.RunAsync(cts.Token));
 }
 
-CameraRecorderService? camera = (appConfig.Camera.Enabled && videoEnabled)
-    ? new CameraRecorderService(appConfig.Camera)
+CameraRecorderService? camera = (appConfig.Camera.Enabled)
+    ? new CameraRecorderService(appConfig.Camera, appConfig.Recording)
     : null;
 
-using var monitor = new AudioMonitorService(appConfig, notification, recordingEnabled, debugMode, camera);
+using var monitor = new AudioMonitorService(appConfig, notification, debugMode, camera);
 monitor.Start(cts.Token);
 
 ConsoleLog.Info("\n[BBFon] Beendet.");
@@ -188,15 +187,15 @@ static void PrintSettings(AppConfig cfg)
     ConsoleLog.Info($"[BBFon]   Startnachricht: {(cfg.Startup.Enabled ? $"\"{cfg.Startup.Message}\"" : "inaktiv")}");
     ConsoleLog.Info($"[BBFon]   Analyse:        {(cfg.Analysis.Enabled ? $"aktiv ({cfg.Analysis.MinTriggerCount}x in {cfg.Analysis.WindowSeconds}s)" : "inaktiv")}");
     var recParts = new List<string>();
-    if (cfg.Recording.MaxFiles > 0)  recParts.Add($"max. {cfg.Recording.MaxFiles} Dateien");
-    if (cfg.Recording.MaxAgeDays > 0) recParts.Add($"max. {cfg.Recording.MaxAgeDays} Tage");
-    if (cfg.Recording.SendAttachments) recParts.Add("Anhänge senden");
-    ConsoleLog.Info($"[BBFon]   Aufnahme:       {(recParts.Count > 0 ? string.Join(", ", recParts) : "keine Bereinigung, kein Senden")}");
+    if (cfg.Recording.MaxFiles > 0 && cfg.Recording.Enabled)  recParts.Add($"max. {cfg.Recording.MaxFiles} Dateien");
+    if (cfg.Recording.MaxAgeDays > 0 && cfg.Recording.Enabled) recParts.Add($"max. {cfg.Recording.MaxAgeDays} Tage");
+    if (cfg.Recording.SendAttachments && cfg.Recording.Enabled) recParts.Add("Anhänge senden");
+    ConsoleLog.Info($"[BBFon]   Aufnahme:       {(recParts.Count > 0 ? string.Join(", ", recParts) : "keine (reine Lautstärken-Analyse)")}");
     ConsoleLog.Info($"[BBFon]   Komprimierung:  {(cfg.Compression.Enabled ? $"aktiv ({cfg.Compression.Format.ToUpperInvariant()}, {cfg.Compression.BitrateKbps}kbps, WAV behalten: {cfg.Compression.KeepWavAudio})" : "inaktiv")}");
     var camDevice = string.IsNullOrWhiteSpace(cfg.Camera.DeviceName) ? "auto" : $"\"{cfg.Camera.DeviceName}\"";
     var camScale  = cfg.Camera.ScaleWidth > 0 ? $", {cfg.Camera.ScaleWidth}px" : "";
     var camMux    = cfg.Camera.MuxWithAudio ? $", mit Audio{(cfg.Camera.KeepMuxAudio ? " (WAV behalten)" : "")}" : "";
-    ConsoleLog.Info($"[BBFon]   Kamera:         {(cfg.Camera.Enabled ? $"aktiv ({cfg.Camera.DurationSeconds}s, {cfg.Camera.Format.ToUpperInvariant()}{camScale}{camMux}, Gerät: {camDevice})" : "inaktiv (--video zum Aktivieren)")}");
+    ConsoleLog.Info($"[BBFon]   Kamera:         {(cfg.Camera.Enabled ? $"aktiv ({cfg.Recording.DurationSeconds}s, {cfg.Camera.Format.ToUpperInvariant()}{camScale}{camMux}, Gerät: {camDevice})" : "inaktiv")}");
     ConsoleLog.Info($"[BBFon]   Batterie:       {(cfg.Battery.Enabled ? $"aktiv (< {cfg.Battery.ThresholdPercent}%, alle {cfg.Battery.CheckIntervalSeconds}s)" : "inaktiv")}");
     ConsoleLog.Info("[BBFon] -------------------------");
 }

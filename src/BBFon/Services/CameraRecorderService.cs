@@ -6,9 +6,14 @@ namespace BBFon.Services;
 public sealed class CameraRecorderService
 {
     private readonly CameraConfig _config;
+    private readonly RecordingConfig _recordingConfig;
     private string? _resolvedDevice;
 
-    public CameraRecorderService(CameraConfig config) => _config = config;
+    public CameraRecorderService(CameraConfig config, RecordingConfig recordingConfig)
+    {
+        _config = config;
+        _recordingConfig = recordingConfig;
+    }
 
     /// <summary>
     /// Nimmt Video auf und gibt den Pfad der fertigen Datei zurück (null bei Fehler).
@@ -27,8 +32,8 @@ public sealed class CameraRecorderService
         var videoPath = Path.Combine(AppContext.BaseDirectory, videoName);
 
         var scaleFilter = (!makeGif && _config.ScaleWidth > 0) ? $" -vf scale={_config.ScaleWidth}:-1" : "";
-        var recordArgs = $"-f dshow -i video=\"{device}\"{scaleFilter} -t {_config.DurationSeconds} -y \"{videoPath}\"";
-        if (!await RunFfmpegAsync(ffmpegPath, recordArgs, _config.DurationSeconds + 15, "Kamera-Aufnahme"))
+        var recordArgs = $"-f dshow -i video=\"{device}\"{scaleFilter} -t {_recordingConfig.DurationSeconds} -y \"{videoPath}\"";
+        if (!await RunFfmpegAsync(ffmpegPath, recordArgs, _recordingConfig.DurationSeconds + 15, "Kamera-Aufnahme"))
             return null;
 
         if (!makeGif)

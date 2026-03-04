@@ -31,8 +31,10 @@ public class AnalysisConfig
 
 public class RecordingConfig
 {
+    public bool Enabled { get; set; } = false;
+    public int DurationSeconds { get; set; } = 10;
     public int MaxFiles { get; set; } = 0;    // 0 = unbegrenzt
-    public int MaxAgeDays { get; set; } = 0;  // 0 = unbegrenzt
+    public int MaxAgeDays { get; set; } = 30;  // 0 = unbegrenzt
     public bool SendAttachments { get; set; } = false;
 }
 
@@ -50,7 +52,6 @@ public class CameraConfig
     public bool Enabled { get; set; } = false;
     public string FfmpegPath { get; set; } = "ffmpeg.exe";
     public string DeviceName { get; set; } = "";   // leer = erstes Gerät automatisch erkennen
-    public int DurationSeconds { get; set; } = 10;
     public string Format { get; set; } = "mp4";    // mp4, avi, mkv, gif
     public bool MuxWithAudio { get; set; } = false;       // WAV-Aufnahme in Video einbetten
     public bool KeepMuxAudio { get; set; } = false;  // WAV nach erfolgreichem Muxing löschen
