@@ -26,7 +26,8 @@ public sealed class CameraRecorderService
         var videoName = makeGif ? $"{timestamp}_cam_tmp.mp4" : $"{timestamp}_cam.{videoExt}";
         var videoPath = Path.Combine(AppContext.BaseDirectory, videoName);
 
-        var recordArgs = $"-f dshow -i video=\"{device}\" -t {_config.DurationSeconds} -y \"{videoPath}\"";
+        var scaleFilter = (!makeGif && _config.ScaleWidth > 0) ? $" -vf scale={_config.ScaleWidth}:-1" : "";
+        var recordArgs = $"-f dshow -i video=\"{device}\"{scaleFilter} -t {_config.DurationSeconds} -y \"{videoPath}\"";
         if (!await RunFfmpegAsync(ffmpegPath, recordArgs, _config.DurationSeconds + 15, "Kamera-Aufnahme"))
             return null;
 
@@ -35,7 +36,8 @@ public sealed class CameraRecorderService
 
         // MP4 → GIF
         var gifPath = Path.Combine(AppContext.BaseDirectory, $"{timestamp}_cam.gif");
-        var gifArgs = $"-i \"{videoPath}\" -vf \"fps=10,scale=320:-1:flags=lanczos\" -y \"{gifPath}\"";
+        var gifScale = _config.ScaleWidth > 0 ? _config.ScaleWidth : 320;
+        var gifArgs = $"-i \"{videoPath}\" -vf \"fps=10,scale={gifScale}:-1:flags=lanczos\" -y \"{gifPath}\"";
         var gifOk = await RunFfmpegAsync(ffmpegPath, gifArgs, 60, "GIF-Konvertierung");
         try { File.Delete(videoPath); } catch { /* ignore */ }
         return gifOk ? gifPath : null;
@@ -76,6 +78,9 @@ public sealed class CameraRecorderService
             try { if (!File.Exists(videoPath)) File.Move(tempPath, videoPath); } catch { /* ignore */ }
             return null;
         }
+
+        if (!_config.KeepMuxAudio)
+            try { File.Delete(wavPath); } catch { /* ignore */ }
 
         return videoPath;
     }
@@ -125,12 +130,16 @@ public sealed class CameraRecorderService
             using var process = Process.Start(psi)
                 ?? throw new InvalidOperationException("ffmpeg konnte nicht gestartet werden.");
 
+            // Stdout/Stderr parallel lesen – sonst füllt sich der Buffer und ffmpeg blockiert
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
             await process.WaitForExitAsync(cts.Token);
 
             if (process.ExitCode != 0)
             {
-                var stderr = await process.StandardError.ReadToEndAsync();
+                var stderr = await stderrTask;
                 throw new InvalidOperationException($"Exit {process.ExitCode}: {stderr.Trim()}");
             }
 
@@ -167,8 +176,19 @@ public sealed class CameraRecorderService
             await process.WaitForExitAsync(cts.Token);
 
             bool inVideoSection = false;
-            foreach (var line in stderr.Split('\n'))
+            foreach (var line in stderr.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
             {
+
+                // Neues ffmpeg-Format (ab ca. 2026): "Gerätename" (video)
+                if (line.Contains("(video)") && !line.Contains("Alternative name"))
+                {
+                    var m = Regex.Match(line, "\"([^\"]+)\"");
+                    if (m.Success)
+                        devices.Add(m.Groups[1].Value);
+                    continue;
+                }
+
+                // Altes ffmpeg-Format: Abschnittsbasiert mit "DirectShow video devices"
                 if (line.Contains("DirectShow video devices"))
                 {
                     inVideoSection = true;

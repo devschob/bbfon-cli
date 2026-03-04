@@ -42,7 +42,7 @@ public class CompressionConfig
     public string FfmpegPath { get; set; } = "ffmpeg.exe";
     public string Format { get; set; } = "opus";   // opus, mp3, aac
     public int BitrateKbps { get; set; } = 24;
-    public bool DeleteWavAfterCompress { get; set; } = true;
+    public bool KeepWavAudio { get; set; } = false;
 }
 
 public class CameraConfig
@@ -52,7 +52,9 @@ public class CameraConfig
     public string DeviceName { get; set; } = "";   // leer = erstes Gerät automatisch erkennen
     public int DurationSeconds { get; set; } = 10;
     public string Format { get; set; } = "mp4";    // mp4, avi, mkv, gif
-    public bool MuxWithAudio { get; set; } = false; // WAV-Aufnahme in Video einbetten
+    public bool MuxWithAudio { get; set; } = false;       // WAV-Aufnahme in Video einbetten
+    public bool KeepMuxAudio { get; set; } = false;  // WAV nach erfolgreichem Muxing löschen
+    public int ScaleWidth { get; set; } = 320;             // Videobreite in Pixel (0 = keine Skalierung)
 }
 
 public class BatteryConfig

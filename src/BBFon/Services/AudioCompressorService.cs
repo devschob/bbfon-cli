@@ -63,7 +63,7 @@ public sealed class AudioCompressorService
                 throw new InvalidOperationException($"ffmpeg Exit {process.ExitCode}: {stderr.Trim()}");
             }
 
-            if (_config.DeleteWavAfterCompress)
+            if (!_config.KeepWavAudio)
                 File.Delete(wavPath);
 
             return outPath;

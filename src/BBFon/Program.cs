@@ -167,7 +167,7 @@ if (appConfig.Battery.Enabled)
     _ = Task.Run(() => batteryMonitor.RunAsync(cts.Token));
 }
 
-CameraRecorderService? camera = (appConfig.Camera.Enabled || videoEnabled)
+CameraRecorderService? camera = (appConfig.Camera.Enabled && videoEnabled)
     ? new CameraRecorderService(appConfig.Camera)
     : null;
 
@@ -192,10 +192,11 @@ static void PrintSettings(AppConfig cfg)
     if (cfg.Recording.MaxAgeDays > 0) recParts.Add($"max. {cfg.Recording.MaxAgeDays} Tage");
     if (cfg.Recording.SendAttachments) recParts.Add("Anhänge senden");
     ConsoleLog.Info($"[BBFon]   Aufnahme:       {(recParts.Count > 0 ? string.Join(", ", recParts) : "keine Bereinigung, kein Senden")}");
-    ConsoleLog.Info($"[BBFon]   Komprimierung:  {(cfg.Compression.Enabled ? $"aktiv ({cfg.Compression.Format.ToUpperInvariant()}, {cfg.Compression.BitrateKbps}kbps, WAV löschen: {cfg.Compression.DeleteWavAfterCompress})" : "inaktiv")}");
+    ConsoleLog.Info($"[BBFon]   Komprimierung:  {(cfg.Compression.Enabled ? $"aktiv ({cfg.Compression.Format.ToUpperInvariant()}, {cfg.Compression.BitrateKbps}kbps, WAV behalten: {cfg.Compression.KeepWavAudio})" : "inaktiv")}");
     var camDevice = string.IsNullOrWhiteSpace(cfg.Camera.DeviceName) ? "auto" : $"\"{cfg.Camera.DeviceName}\"";
-    var camMux    = cfg.Camera.MuxWithAudio ? ", mit Audio" : "";
-    ConsoleLog.Info($"[BBFon]   Kamera:         {(cfg.Camera.Enabled ? $"aktiv ({cfg.Camera.DurationSeconds}s, {cfg.Camera.Format.ToUpperInvariant()}{camMux}, Gerät: {camDevice})" : "inaktiv (--video zum Aktivieren)")}");
+    var camScale  = cfg.Camera.ScaleWidth > 0 ? $", {cfg.Camera.ScaleWidth}px" : "";
+    var camMux    = cfg.Camera.MuxWithAudio ? $", mit Audio{(cfg.Camera.KeepMuxAudio ? " (WAV behalten)" : "")}" : "";
+    ConsoleLog.Info($"[BBFon]   Kamera:         {(cfg.Camera.Enabled ? $"aktiv ({cfg.Camera.DurationSeconds}s, {cfg.Camera.Format.ToUpperInvariant()}{camScale}{camMux}, Gerät: {camDevice})" : "inaktiv (--video zum Aktivieren)")}");
     ConsoleLog.Info($"[BBFon]   Batterie:       {(cfg.Battery.Enabled ? $"aktiv (< {cfg.Battery.ThresholdPercent}%, alle {cfg.Battery.CheckIntervalSeconds}s)" : "inaktiv")}");
     ConsoleLog.Info("[BBFon] -------------------------");
 }
