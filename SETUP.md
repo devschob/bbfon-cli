@@ -76,6 +76,8 @@ Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen.
     "MinTriggerCount": 3
   },
   "Recording": {
+    "Enabled": false,
+    "DurationSeconds": 10,
     "MaxFiles": 0,
     "MaxAgeDays": 0,
     "SendAttachments": false
@@ -126,6 +128,8 @@ Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen.
 | `Analysis.Enabled` | `bool` | Analyse aktivieren. Bei `false`: jeder einzelne Trigger löst sofort aus. |
 | `Analysis.WindowSeconds` | `int` | Beobachtungsfenster in Sekunden. |
 | `Analysis.MinTriggerCount` | `int` | Mindestanzahl Trigger innerhalb von `WindowSeconds` für Alarm. |
+| `Recording.Enabled` | `bool` | Audio-Aufnahme bei Alarm aktivieren (WAV neben EXE). |
+| `Recording.DurationSeconds` | `int` | Maximale Aufnahmedauer in Sekunden. Standard: 10. |
 | `Recording.MaxFiles` | `int` | Maximale Anzahl Aufnahme-Dateien. Älteste werden gelöscht. `0` = unbegrenzt. |
 | `Recording.MaxAgeDays` | `int` | Dateien älter als N Tage werden gelöscht. `0` = unbegrenzt. |
 | `Recording.SendAttachments` | `bool` | Aufnahmen nach Fertigstellung als Datei-Anhang senden. |
@@ -139,7 +143,7 @@ Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen.
 | `Camera.DeviceName` | `string` | DirectShow-Gerätename. Leer = automatisch (erstes Gerät). |
 | `Camera.DurationSeconds` | `int` | Aufnahmedauer in Sekunden. Standard: 10. |
 | `Camera.Format` | `string` | Videoformat: `mp4`, `avi`, `mkv`, `gif`. |
-| `Camera.MuxWithAudio` | `bool` | WAV-Audio in Video einbetten. Erfordert aktive Audio-Aufnahme (`-r`). |
+| `Camera.MuxWithAudio` | `bool` | WAV-Audio in Video einbetten. Erfordert aktive Audio-Aufnahme (`Recording.Enabled: true`). |
 | `Battery.Enabled` | `bool` | Batterie-Überwachung aktivieren. |
 | `Battery.ThresholdPercent` | `int` | Ladestand in Prozent (0–100), unterhalb dessen eine Warnung gesendet wird. |
 | `Battery.CheckIntervalSeconds` | `int` | Prüfintervall in Sekunden. Standard: 60. |
@@ -294,8 +298,6 @@ Wenn die Nachricht ankommt, ist alles korrekt konfiguriert.
 
 | Parameter | Kurzform | Beschreibung |
 |---|---|---|
-| `--record` | `-r` | Audio-Aufnahme bei Alarm aktivieren (WAV neben EXE) |
-| `--video` | `-v` | Kamera-Aufnahme bei Alarm aktivieren (benötigt FFmpeg) |
 | `--debug` | `-d` | Debug-Modus: keine Nachrichten, ausführliche Konsolenausgabe |
 | `--test` | – | Sendet sofort eine Testnachricht und beendet sich |
 | `--calibrate` | – | Misst 10s Hintergrundrauschen und schlägt `Threshold`-Wert vor |
@@ -305,32 +307,16 @@ Wenn die Nachricht ankommt, ist alles korrekt konfiguriert.
 Parameter können kombiniert werden:
 
 ```cmd
-BBFon.exe --record --video --debug
+BBFon.exe --debug
 ```
 
-Parameter können kombiniert werden:
-
-```cmd
-BBFon.exe --record --debug
-```
-
-### Starten (ohne Aufnahme)
+### Starten
 
 ```cmd
 BBFon.exe
 ```
 
-### Starten mit Alarm-Aufnahme
-
-```cmd
-BBFon.exe --record
-```
-
-Kurzform:
-
-```cmd
-BBFon.exe -r
-```
+Aufnahme und Kamera werden über `appsettings.json` gesteuert (`Recording.Enabled`, `Camera.Enabled`).
 
 ### Debug-Modus (zum Testen)
 
@@ -367,7 +353,7 @@ Ohne Aufnahme:
 [12:34:01] Lautstärke: 0.012
 ```
 
-Mit Aufnahme (`--record`):
+Mit Aufnahme (`Recording.Enabled: true`):
 ```
 [BBFon] Starte... Schwellwert: 0.30 | Provider: Telegram
 [BBFon] Überwache Standard-Mikrofon... (Schwellwert: 0.30)
@@ -496,10 +482,10 @@ Nach einem Alarm wird die Triggerliste geleert, damit der nächste Alarm von vor
 
 ### Audio-Aufnahme
 
-Wenn `--record` / `-r` übergeben wird, startet bei jedem Alarm eine WAV-Aufnahme:
+Wenn `Recording.Enabled: true` gesetzt ist, startet bei jedem Alarm eine WAV-Aufnahme:
 
 - Der erste Audio-Buffer, der den Alarm ausgelöst hat, ist Bestandteil der Aufnahme (kein Aussetzer)
-- Aufgenommen wird maximal **10 Sekunden**
+- Aufgenommen wird maximal `Recording.DurationSeconds` Sekunden (Standard: 10)
 - Dateiname: `yyyy-MM-dd_HH-mm-ss.wav` (z. B. `2026-03-03_12-34-05.wav`)
 - Speicherort: selber Ordner wie die `BBFon.exe`
 - Format: WAV, 16.000 Hz, Mono, 16 Bit (~320 KB)
@@ -507,13 +493,13 @@ Wenn `--record` / `-r` übergeben wird, startet bei jedem Alarm eine WAV-Aufnahm
 
 ### Kamera-Aufnahme
 
-Wenn `--video` / `-v` oder `Camera.Enabled: true` aktiv ist, startet bei jedem Alarm eine Kamera-Aufnahme (benötigt FFmpeg):
+Wenn `Camera.Enabled: true` gesetzt ist, startet bei jedem Alarm eine Kamera-Aufnahme (benötigt FFmpeg):
 
 - Läuft **parallel** zur Audio-Aufnahme, blockiert keine Meldungen
 - Dateiname: `yyyy-MM-dd_HH-mm-ss_cam.mp4` (gleicher Timestamp wie die Audio-Datei)
 - Kamera wird beim ersten Alarm automatisch erkannt (`--list-cameras` für manuelle Auswahl)
 - Format `gif`: erst MP4 aufnehmen, dann zu GIF konvertieren, MP4 wird gelöscht
-- `MuxWithAudio: true`: nach beiden Aufnahmen wird das WAV als Tonspur in das Video eingebettet
+- `MuxWithAudio: true`: nach beiden Aufnahmen wird das WAV als Tonspur in das Video eingebettet (erfordert `Recording.Enabled: true`)
 
 **Reihenfolge bei aktivem Muxing:**
 1. Audio + Video parallel aufnehmen
