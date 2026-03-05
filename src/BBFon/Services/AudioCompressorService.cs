@@ -5,8 +5,15 @@ namespace BBFon.Services;
 public sealed class AudioCompressorService
 {
     private readonly CompressionConfig _config;
+    private readonly string _ffmpegPath;
 
-    public AudioCompressorService(CompressionConfig config) => _config = config;
+    public AudioCompressorService(CompressionConfig config, string ffmpegPath)
+    {
+        _config = config;
+        _ffmpegPath = Path.IsPathRooted(ffmpegPath)
+            ? ffmpegPath
+            : Path.Combine(AppContext.BaseDirectory, ffmpegPath);
+    }
 
     /// <summary>
     /// Compresses a WAV file using ffmpeg. Returns the path of the compressed file,
@@ -14,9 +21,7 @@ public sealed class AudioCompressorService
     /// </summary>
     public async Task<string?> CompressAsync(string wavPath)
     {
-        var ffmpegPath = Path.IsPathRooted(_config.FfmpegPath)
-            ? _config.FfmpegPath
-            : Path.Combine(AppContext.BaseDirectory, _config.FfmpegPath);
+        var ffmpegPath = _ffmpegPath;
 
         var ext = _config.Format.ToLowerInvariant() switch
         {

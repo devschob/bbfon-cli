@@ -33,7 +33,8 @@ public sealed class AudioMonitorService : IDisposable
         _waveIn = CreateWaveIn();
         _waveIn.StartRecording();
 
-        ConsoleLog.Info($"[BBFon] Überwache Standard-Mikrofon... (Schwellwert: {_config.Threshold:F2})");
+        var deviceLabel = string.IsNullOrWhiteSpace(_config.AudioDevice) ? "Standard-Mikrofon" : $"\"{_config.AudioDevice}\"";
+        ConsoleLog.Info($"[BBFon] Überwache {deviceLabel}... (Schwellwert: {_config.Threshold:F3})");
 
         if (_config.Analysis.Enabled)
             ConsoleLog.Info($"[BBFon] Analyse aktiv: mind. {_config.Analysis.MinTriggerCount}x Trigger in {_config.Analysis.WindowSeconds}s");
@@ -67,11 +68,33 @@ public sealed class AudioMonitorService : IDisposable
             StopRecording();
     }
 
+    public static List<string> ListDevices()
+    {
+        var devices = new List<string>();
+        for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+            devices.Add(WaveInEvent.GetCapabilities(i).ProductName);
+        return devices;
+    }
+
     private WaveInEvent CreateWaveIn()
     {
+        int deviceNumber = 0;
+        if (!string.IsNullOrWhiteSpace(_config.AudioDevice))
+        {
+            for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+            {
+                if (WaveInEvent.GetCapabilities(i).ProductName.Contains(_config.AudioDevice, StringComparison.OrdinalIgnoreCase))
+                {
+                    deviceNumber = i;
+                    break;
+                }
+            }
+        }
+
         var waveIn = new WaveInEvent
         {
-            WaveFormat = new WaveFormat(16000, 1),
+            DeviceNumber       = deviceNumber,
+            WaveFormat         = new WaveFormat(16000, 1),
             BufferMilliseconds = 100
         };
         waveIn.DataAvailable += OnDataAvailable;
@@ -128,7 +151,8 @@ public sealed class AudioMonitorService : IDisposable
         }
 
         // Trigger-Analyse
-        bool aboveThreshold = rms >= _config.Threshold;
+        float threshold = _config.Threshold / AppConfig.ThresholdScale;
+        bool aboveThreshold = rms >= threshold;
         int triggerCount = 0;
 
         if (_config.Analysis.Enabled)
@@ -148,14 +172,14 @@ public sealed class AudioMonitorService : IDisposable
         {
             string cooldownHint = _debugMode && analysisOk && !cooldownOk
                 ? $" [Cooldown: {(_config.CooldownSeconds - (now - _lastSent).TotalSeconds):F0}s]" : "";
-            ConsoleLog.Inline($"\r[{now:HH:mm:ss}] Lautstärke: {rms:F3}  Trigger: {triggerCount}/{_config.Analysis.MinTriggerCount} (letzte {_config.Analysis.WindowSeconds}s){cooldownHint}   ", lineColor);
+            ConsoleLog.Inline($"\r[{now:HH:mm:ss}] Lautstärke: {rms * AppConfig.ThresholdScale:F3}  Trigger: {triggerCount}/{_config.Analysis.MinTriggerCount} (letzte {_config.Analysis.WindowSeconds}s){cooldownHint}   ", lineColor);
         }
         else
         {
             string marker = _debugMode && aboveThreshold ? " [!]" : "";
             string cooldownHint = _debugMode && aboveThreshold && !cooldownOk
                 ? $" [Cooldown: {(_config.CooldownSeconds - (now - _lastSent).TotalSeconds):F0}s]" : "";
-            ConsoleLog.Inline($"\r[{now:HH:mm:ss}] Lautstärke: {rms:F3}{marker}{cooldownHint}   ", lineColor);
+            ConsoleLog.Inline($"\r[{now:HH:mm:ss}] Lautstärke: {rms * AppConfig.ThresholdScale:F3}{marker}{cooldownHint}   ", lineColor);
         }
 
         // Alarm auslösen
@@ -164,7 +188,7 @@ public sealed class AudioMonitorService : IDisposable
             _lastSent = now;
             _triggerTimestamps.Clear();
 
-            ConsoleLog.Alarm($"\n[{now:HH:mm:ss}] ALARM! Lautstärke {rms:F3} >= {_config.Threshold:F2}. Sende Nachricht...");
+            ConsoleLog.Alarm($"\n[{now:HH:mm:ss}] ALARM! Lautstärke {rms * AppConfig.ThresholdScale:F3} >= {_config.Threshold:F3}. Sende Nachricht...");
 
             var timestamp = now.ToString("yyyy-MM-dd_HH-mm-ss");
 
@@ -246,7 +270,7 @@ public sealed class AudioMonitorService : IDisposable
             string? finalAudioPath = wavPath;
             if (_config.Compression.Enabled && wavPath != null)
             {
-                var compressor = new AudioCompressorService(_config.Compression);
+                var compressor = new AudioCompressorService(_config.Compression, _config.FfmpegPath);
                 var result = await compressor.CompressAsync(wavPath);
                 if (result != null)
                 {

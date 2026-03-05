@@ -2,10 +2,13 @@ namespace BBFon;
 
 public class AppConfig
 {
-    public float Threshold { get; set; } = 0.3f;
+    public const float ThresholdScale = 1000f;
+    public float Threshold { get; set; } = 300f;   // 0–1000 Skala
     public int CooldownSeconds { get; set; } = 60;
     public string Message { get; set; } = "Lärm erkannt!";
     public string Provider { get; set; } = "Telegram";
+    public string FfmpegPath { get; set; } = "ffmpeg.exe";
+    public string AudioDevice { get; set; } = "";   // leer = Standard-Mikrofon
     public StartupConfig Startup { get; set; } = new();
     public AnalysisConfig Analysis { get; set; } = new();
     public RecordingConfig Recording { get; set; } = new();
@@ -41,7 +44,6 @@ public class RecordingConfig
 public class CompressionConfig
 {
     public bool Enabled { get; set; } = false;
-    public string FfmpegPath { get; set; } = "ffmpeg.exe";
     public string Format { get; set; } = "opus";   // opus, mp3, aac
     public int BitrateKbps { get; set; } = 24;
     public bool KeepWavAudio { get; set; } = false;
@@ -50,7 +52,6 @@ public class CompressionConfig
 public class CameraConfig
 {
     public bool Enabled { get; set; } = false;
-    public string FfmpegPath { get; set; } = "ffmpeg.exe";
     public string DeviceName { get; set; } = "";   // leer = erstes Gerät automatisch erkennen
     public string Format { get; set; } = "mp4";    // mp4, avi, mkv, gif
     public bool MuxWithAudio { get; set; } = false;       // WAV-Aufnahme in Video einbetten

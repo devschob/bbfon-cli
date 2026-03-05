@@ -7,12 +7,16 @@ public sealed class CameraRecorderService
 {
     private readonly CameraConfig _config;
     private readonly RecordingConfig _recordingConfig;
+    private readonly string _ffmpegPath;
     private string? _resolvedDevice;
 
-    public CameraRecorderService(CameraConfig config, RecordingConfig recordingConfig)
+    public CameraRecorderService(CameraConfig config, RecordingConfig recordingConfig, string ffmpegPath)
     {
         _config = config;
         _recordingConfig = recordingConfig;
+        _ffmpegPath = Path.IsPathRooted(ffmpegPath)
+            ? ffmpegPath
+            : Path.Combine(AppContext.BaseDirectory, ffmpegPath);
     }
 
     /// <summary>
@@ -21,7 +25,7 @@ public sealed class CameraRecorderService
     /// </summary>
     public async Task<string?> RecordAsync(string timestamp)
     {
-        var ffmpegPath = ResolveFfmpegPath();
+        var ffmpegPath = _ffmpegPath;
         var device = await ResolveDeviceAsync(ffmpegPath);
         if (device == null) return null;
 
@@ -63,7 +67,7 @@ public sealed class CameraRecorderService
         if (!File.Exists(videoPath) || !File.Exists(wavPath))
             return null;
 
-        var ffmpegPath = ResolveFfmpegPath();
+        var ffmpegPath = _ffmpegPath;
         var tempPath   = videoPath + ".mux_tmp" + Path.GetExtension(videoPath);
 
         try { File.Move(videoPath, tempPath); }
@@ -91,12 +95,7 @@ public sealed class CameraRecorderService
     }
 
     public async Task<List<string>> ListDevicesAsync()
-        => await QueryDevicesAsync(ResolveFfmpegPath());
-
-    private string ResolveFfmpegPath() =>
-        Path.IsPathRooted(_config.FfmpegPath)
-            ? _config.FfmpegPath
-            : Path.Combine(AppContext.BaseDirectory, _config.FfmpegPath);
+        => await QueryDevicesAsync(_ffmpegPath);
 
     private async Task<string?> ResolveDeviceAsync(string ffmpegPath)
     {

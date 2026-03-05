@@ -6,8 +6,8 @@ public static class ConfigValidator
     {
         var errors = new List<string>();
 
-        if (cfg.Threshold <= 0f || cfg.Threshold > 1f)
-            errors.Add($"Threshold muss zwischen 0.01 und 1.0 liegen (aktuell: {cfg.Threshold})");
+        if (cfg.Threshold <= 0f || cfg.Threshold > AppConfig.ThresholdScale)
+            errors.Add($"Threshold muss zwischen 0.001 und {AppConfig.ThresholdScale} liegen (aktuell: {cfg.Threshold:F3})");
 
         if (cfg.CooldownSeconds < 0)
             errors.Add("CooldownSeconds darf nicht negativ sein");

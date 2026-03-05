@@ -10,7 +10,8 @@ var  linkToken         = linkArgIdx >= 0 && linkArgIdx + 1 < args.Length && !arg
                              ? args[linkArgIdx + 1] : null;
 bool testMode          = args.Contains("--test");
 bool calibrateMode     = args.Contains("--calibrate");
-bool listCamerasMode   = args.Contains("--list-cameras");
+bool listCamerasMode   = args.Contains("--list-video");
+bool listAudioMode     = args.Contains("--list-audio");
 
 var configRoot = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
@@ -36,12 +37,13 @@ if (linkMode)
         return;
     }
 
-    if (!appConfig.Provider.Equals("Signal", StringComparison.OrdinalIgnoreCase))
+    if (appConfig.Provider.Equals("Signal", StringComparison.OrdinalIgnoreCase))
     {
-        ConsoleLog.Error($"[BBFon] --link ist nur für Provider \"Signal\" oder \"Telegram\" verfügbar (aktuell: \"{appConfig.Provider}\").");
+        await new LinkService(appConfig.Signal).RunAsync();
         return;
     }
-    await new LinkService(appConfig.Signal).RunAsync();
+
+    ConsoleLog.Error($"[BBFon] --link ist nur für Provider \"Signal\" oder \"Telegram\" verfügbar (aktuell: \"{appConfig.Provider}\").");
     return;
 }
 
@@ -52,10 +54,10 @@ if (calibrateMode)
     return;
 }
 
-// --list-cameras: Verfügbare Kamera-Geräte auflisten
+// --list-video: Verfügbare Kamera-Geräte auflisten
 if (listCamerasMode)
 {
-    var camService = new CameraRecorderService(appConfig.Camera, appConfig.Recording);
+    var camService = new CameraRecorderService(appConfig.Camera, appConfig.Recording, appConfig.FfmpegPath);
     var devices = await camService.ListDevicesAsync();
     if (devices.Count == 0)
     {
@@ -67,6 +69,24 @@ if (listCamerasMode)
         foreach (var d in devices)
             ConsoleLog.Info($"  - \"{d}\"");
         ConsoleLog.Info("[BBFon] Trage den gewünschten Namen als Camera.DeviceName in appsettings.json ein.");
+    }
+    return;
+}
+
+// --list-audio: Verfügbare Audio-Eingabegeräte auflisten
+if (listAudioMode)
+{
+    var devices = AudioMonitorService.ListDevices();
+    if (devices.Count == 0)
+    {
+        ConsoleLog.Warning("[BBFon] Keine Audio-Eingabegeräte gefunden.");
+    }
+    else
+    {
+        ConsoleLog.Info("[BBFon] Verfügbare Audio-Eingabegeräte:");
+        for (int i = 0; i < devices.Count; i++)
+            ConsoleLog.Info($"  [{i}] \"{devices[i]}\"");
+        ConsoleLog.Info("[BBFon] Trage den gewünschten Namen als AudioDevice in appsettings.json ein.");
     }
     return;
 }
@@ -167,7 +187,7 @@ if (appConfig.Battery.Enabled)
 }
 
 CameraRecorderService? camera = (appConfig.Camera.Enabled)
-    ? new CameraRecorderService(appConfig.Camera, appConfig.Recording)
+    ? new CameraRecorderService(appConfig.Camera, appConfig.Recording, appConfig.FfmpegPath)
     : null;
 
 using var monitor = new AudioMonitorService(appConfig, notification, debugMode, camera);
@@ -181,9 +201,11 @@ static void PrintSettings(AppConfig cfg)
 {
     ConsoleLog.Info("[BBFon] --- Einstellungen ---");
     ConsoleLog.Info($"[BBFon]   Provider:       {cfg.Provider}");
-    ConsoleLog.Info($"[BBFon]   Schwellwert:    {cfg.Threshold:F2}");
+    ConsoleLog.Info($"[BBFon]   Schwellwert:    {cfg.Threshold:F3}");
     ConsoleLog.Info($"[BBFon]   Cooldown:       {cfg.CooldownSeconds}s");
     ConsoleLog.Info($"[BBFon]   Nachricht:      {cfg.Message}");
+    var audioDevice = string.IsNullOrWhiteSpace(cfg.AudioDevice) ? "Standard" : $"\"{cfg.AudioDevice}\"";
+    ConsoleLog.Info($"[BBFon]   Audio-Eingang:  {audioDevice}");
     ConsoleLog.Info($"[BBFon]   Startnachricht: {(cfg.Startup.Enabled ? $"\"{cfg.Startup.Message}\"" : "inaktiv")}");
     ConsoleLog.Info($"[BBFon]   Analyse:        {(cfg.Analysis.Enabled ? $"aktiv ({cfg.Analysis.MinTriggerCount}x in {cfg.Analysis.WindowSeconds}s)" : "inaktiv")}");
     var recParts = new List<string>();
