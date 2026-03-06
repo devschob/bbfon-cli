@@ -1,6 +1,6 @@
 # BBFon – Mikrofon-Überwachung mit Signal/Telegram-Benachrichtigung
 
-BBFon überwacht das Standard-Mikrofon des Windows-PCs und sendet eine Nachricht über Signal oder Telegram, sobald die Lautstärke einen konfigurierbaren Schwellwert überschreitet. Zwischen zwei Nachrichten gilt ein Cooldown-Zeitraum, um Spam zu verhindern.
+BBFon überwacht ein Mikrofon des Windows-PCs und sendet eine Nachricht über Signal oder Telegram, sobald die Lautstärke einen konfigurierbaren Schwellwert überschreitet. Zwischen zwei Nachrichten gilt ein Cooldown-Zeitraum, um Spam zu verhindern.
 
 ---
 
@@ -24,7 +24,7 @@ BBFon überwacht das Standard-Mikrofon des Windows-PCs und sendet eine Nachricht
 |---|---|
 | Betriebssystem | Windows 10 / 11 |
 | .NET SDK | .NET 8 SDK ([download](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)) |
-| Mikrofon | Standard-Aufnahmegerät in Windows konfiguriert |
+| Mikrofon | Aufnahmegerät in Windows konfiguriert |
 | Für Signal | Java 17+ (für signal-cli) |
 | Für Telegram | Internetzugang, Telegram-Account |
 | Für Komprimierung / Kamera | FFmpeg (siehe [FFMPEG.md](FFMPEG.md)) |
@@ -58,14 +58,16 @@ src\BBFon\bin\Release\net8.0-windows\win-x64\publish\BBFon.exe
 
 ## 3. Konfiguration (appsettings.json)
 
-Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen.
+Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen. Änderungen werden **ohne Neustart** übernommen (Hot Reload).
 
 ```json
 {
-  "Threshold": 0.3,
+  "Threshold": 300.0,
   "CooldownSeconds": 60,
   "Message": "Lärm erkannt!",
   "Provider": "Telegram",
+  "FfmpegPath": "ffmpeg.exe",
+  "AudioDevice": "",
   "Startup": {
     "Enabled": false,
     "Message": "ich wache"
@@ -84,18 +86,17 @@ Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen.
   },
   "Compression": {
     "Enabled": false,
-    "FfmpegPath": "ffmpeg.exe",
     "Format": "opus",
     "BitrateKbps": 24,
-    "DeleteWavAfterCompress": true
+    "KeepWavAudio": false
   },
   "Camera": {
     "Enabled": false,
-    "FfmpegPath": "ffmpeg.exe",
     "DeviceName": "",
-    "DurationSeconds": 10,
     "Format": "mp4",
-    "MuxWithAudio": false
+    "MuxWithAudio": false,
+    "KeepMuxAudio": false,
+    "ScaleWidth": 320
   },
   "Battery": {
     "Enabled": false,
@@ -119,31 +120,32 @@ Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen.
 
 | Feld | Typ | Beschreibung |
 |---|---|---|
-| `Threshold` | `float` (0.0–1.0) | Lautstärke-Schwellwert. `0.0` = Stille, `1.0` = maximale Lautstärke. Empfehlung: `0.2`–`0.4` |
-| `CooldownSeconds` | `int` | Mindestabstand in Sekunden zwischen zwei Nachrichten. Verhindert Spam. |
+| `Threshold` | `float` (0–1000) | Lautstärke-Schwellwert. `0` = Stille, `1000` = maximale Lautstärke. Empfehlung: `20`–`100`. Mit `--calibrate` bestimmen. |
+| `CooldownSeconds` | `int` | Mindestabstand in Sekunden zwischen zwei Nachrichten. |
 | `Message` | `string` | Text der gesendeten Nachricht. |
 | `Provider` | `string` | Aktiver Dienst: `"Telegram"` oder `"Signal"` (Groß-/Kleinschreibung egal). |
+| `FfmpegPath` | `string` | Pfad zu `ffmpeg.exe`. Relativ zur EXE oder absolut. Wird von Kamera und Komprimierung genutzt. |
+| `AudioDevice` | `string` | Name des Mikrofons (Teilstring genügt). Leer = Standard-Mikrofon. Mit `--list-audio` anzeigen. |
 | `Startup.Enabled` | `bool` | Beim Start eine Nachricht senden. |
 | `Startup.Message` | `string` | Text der Startnachricht. Standard: `"ich wache"`. |
 | `Analysis.Enabled` | `bool` | Analyse aktivieren. Bei `false`: jeder einzelne Trigger löst sofort aus. |
 | `Analysis.WindowSeconds` | `int` | Beobachtungsfenster in Sekunden. |
 | `Analysis.MinTriggerCount` | `int` | Mindestanzahl Trigger innerhalb von `WindowSeconds` für Alarm. |
 | `Recording.Enabled` | `bool` | Audio-Aufnahme bei Alarm aktivieren (WAV neben EXE). |
-| `Recording.DurationSeconds` | `int` | Maximale Aufnahmedauer in Sekunden. Standard: 10. |
+| `Recording.DurationSeconds` | `int` | Maximale Aufnahmedauer in Sekunden. Gilt auch für Kamera. Standard: 10. |
 | `Recording.MaxFiles` | `int` | Maximale Anzahl Aufnahme-Dateien. Älteste werden gelöscht. `0` = unbegrenzt. |
 | `Recording.MaxAgeDays` | `int` | Dateien älter als N Tage werden gelöscht. `0` = unbegrenzt. |
 | `Recording.SendAttachments` | `bool` | Aufnahmen nach Fertigstellung als Datei-Anhang senden. |
 | `Compression.Enabled` | `bool` | WAV-Aufnahmen nach Alarm komprimieren (benötigt FFmpeg). |
-| `Compression.FfmpegPath` | `string` | Pfad zu `ffmpeg.exe`. Relativ zur EXE oder absolut. |
 | `Compression.Format` | `string` | Zielformat: `opus`, `mp3`, `aac`. |
 | `Compression.BitrateKbps` | `int` | Ziel-Bitrate in kbps. |
-| `Compression.DeleteWavAfterCompress` | `bool` | Original-WAV nach Komprimierung löschen. |
+| `Compression.KeepWavAudio` | `bool` | Original-WAV nach Komprimierung behalten (`false` = löschen). |
 | `Camera.Enabled` | `bool` | Kamera-Aufnahme bei Alarm aktivieren (benötigt FFmpeg). |
-| `Camera.FfmpegPath` | `string` | Pfad zu `ffmpeg.exe`. |
-| `Camera.DeviceName` | `string` | DirectShow-Gerätename. Leer = automatisch (erstes Gerät). |
-| `Camera.DurationSeconds` | `int` | Aufnahmedauer in Sekunden. Standard: 10. |
+| `Camera.DeviceName` | `string` | DirectShow-Gerätename. Leer = automatisch (erstes Gerät). Mit `--list-video` anzeigen. |
 | `Camera.Format` | `string` | Videoformat: `mp4`, `avi`, `mkv`, `gif`. |
-| `Camera.MuxWithAudio` | `bool` | WAV-Audio in Video einbetten. Erfordert aktive Audio-Aufnahme (`Recording.Enabled: true`). |
+| `Camera.MuxWithAudio` | `bool` | WAV-Audio in Video einbetten. Erfordert `Recording.Enabled: true`. |
+| `Camera.KeepMuxAudio` | `bool` | WAV nach erfolgreichem Muxing behalten (`false` = löschen). |
+| `Camera.ScaleWidth` | `int` | Videobreite in Pixel. `0` = keine Skalierung. Standard: 320. |
 | `Battery.Enabled` | `bool` | Batterie-Überwachung aktivieren. |
 | `Battery.ThresholdPercent` | `int` | Ladestand in Prozent (0–100), unterhalb dessen eine Warnung gesendet wird. |
 | `Battery.CheckIntervalSeconds` | `int` | Prüfintervall in Sekunden. Standard: 60. |
@@ -159,11 +161,11 @@ Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen.
 Starte BBFon und beobachte die Anzeige im Konsolenfenster:
 
 ```
-[12:34:01] Lautstärke: 0.012
-[12:34:01] Lautstärke: 0.287
+[12:34:01] Lautstärke: 12.345
+[12:34:01] Lautstärke: 287.123
 ```
 
-Sprich normal in das Mikrofon und notiere typische Werte. Setze `Threshold` etwas höher als der Hintergrundlärm.
+Die Skala geht von `0` (Stille) bis `1000` (maximale Lautstärke). Empfehlung: `--calibrate` nutzen, um den Hintergrundlärm zu messen und einen Schwellwert vorgeschlagen zu bekommen.
 
 ---
 
@@ -300,15 +302,32 @@ Wenn die Nachricht ankommt, ist alles korrekt konfiguriert.
 |---|---|---|
 | `--debug` | `-d` | Debug-Modus: keine Nachrichten, ausführliche Konsolenausgabe |
 | `--test` | – | Sendet sofort eine Testnachricht und beendet sich |
-| `--calibrate` | – | Misst 10s Hintergrundrauschen und schlägt `Threshold`-Wert vor |
+| `--calibrate` | – | Misst 10s Hintergrundrauschen, schlägt `Threshold`-Wert vor und zeigt Balkendiagramm |
 | `--link` | – | **Signal:** QR-Code anzeigen und verknüpfen. **Telegram:** `--link <TOKEN>` – Chat-ID ermitteln und in appsettings.json speichern |
-| `--list-cameras` | – | Verfügbare DirectShow-Kamerageräte anzeigen (benötigt FFmpeg) |
+| `--list-audio` | – | Verfügbare Mikrofon-/Audio-Eingabegeräte anzeigen |
+| `--list-video` | – | Verfügbare DirectShow-Kamerageräte anzeigen (benötigt FFmpeg) |
 
-Parameter können kombiniert werden:
+### Audio-Eingabegerät wählen
 
 ```cmd
-BBFon.exe --debug
+BBFon.exe --list-audio
 ```
+
+Ausgabe:
+```
+[BBFon] Verfügbare Audio-Eingabegeräte:
+  [0] "Mikrofon (Realtek High Definition Audio)"
+  [1] "Headset-Mikrofon (USB Audio)"
+[BBFon] Trage den gewünschten Namen als AudioDevice in appsettings.json ein.
+```
+
+Den gewünschten Namen (oder einen eindeutigen Teilstring) in `appsettings.json` eintragen:
+
+```json
+"AudioDevice": "Headset"
+```
+
+Leer lassen für das Standard-Mikrofon von Windows.
 
 ### Starten
 
@@ -328,67 +347,55 @@ Im Debug-Modus:
 - **Keine Nachricht wird gesendet** – stattdessen Konsolenausgabe: `[DEBUG] Würde senden: "Lärm erkannt!"`
 - Lautstärke-Zeile zeigt `[!]` wenn Schwellwert überschritten
 - Wenn Cooldown einen Alarm blockiert: `[Cooldown: 45s]` in der Zeile sichtbar
-- Batterie-Checks werden jedes Mal protokolliert mit aktuellem Ladestand und Flanken-Status
+- Batterie-Checks werden jedes Mal protokolliert
 - Beim Start und bei jeder Dateiänderung werden die aktuellen Einstellungen angezeigt
 
 ### Hot Reload der Konfiguration
 
-Die `appsettings.json` wird **bei jeder Dateiänderung automatisch neu geladen** – kein Neustart nötig. Alle Services (Audio, Batterie) übernehmen die neuen Werte sofort beim nächsten Zyklus. In der Konsole erscheint:
+Die `appsettings.json` wird **bei jeder Dateiänderung automatisch neu geladen** – kein Neustart nötig. In der Konsole erscheint:
 
 ```
 [BBFon] Konfiguration neu geladen.
 [BBFon] --- Einstellungen ---
-[BBFon]   Provider:       Telegram
 ...
 ```
 
-### Konsolenausgabe beim Start
+### Kalibrierung (--calibrate)
 
-Ohne Aufnahme:
-```
-[BBFon] Starte... Schwellwert: 0.30 | Provider: Telegram
-[BBFon] Überwache Standard-Mikrofon... (Schwellwert: 0.30)
-[BBFon] Strg+C zum Beenden.
-
-[12:34:01] Lautstärke: 0.012
+```cmd
+BBFon.exe --calibrate
 ```
 
-Mit Aufnahme (`Recording.Enabled: true`):
-```
-[BBFon] Starte... Schwellwert: 0.30 | Provider: Telegram
-[BBFon] Überwache Standard-Mikrofon... (Schwellwert: 0.30)
-[BBFon] Aufnahme bei Alarm: aktiv (max. 10s, WAV neben EXE)
-[BBFon] Strg+C zum Beenden.
-
-[12:34:01] Lautstärke: 0.012
-```
-
-### Alarm ausgelöst (mit Aufnahme)
+BBFon misst 10 Sekunden lang den Hintergrundlärm und gibt danach einen empfohlenen Schwellwert aus – inklusive Balkendiagramm mit allen 100ms-Intervallen:
 
 ```
-[12:34:05] Lautstärke: 0.412
-[12:34:05] ALARM! Lautstärke 0.412 >= 0.30. Sende Nachricht...
-[12:34:05] Aufnahme gestartet: 2026-03-03_12-34-05.wav
+[BBFon] Verlauf (100ms Intervalle):
+  [0.0s] ████████░|░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    18.234
+  [0.1s] ██████████████|████░░░░░░░░░░░░░░░░░░░░░░░░░    45.678 !
+  [0.2s] ██████|░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    12.100
+  ...
+        ^ 32.000 (Schwellwert)
+
+[BBFon] Trage in appsettings.json ein:
+  "Threshold": 32.000
+```
+
+Der `|` im Balken markiert den empfohlenen Schwellwert. Werte über dem Schwellwert erscheinen rot mit `!`.
+
+### Konsolenausgabe im Betrieb
+
+```
+[12:34:01] Lautstärke: 12.345
+[12:34:01] Lautstärke: 287.890
+[12:34:05] ALARM! Lautstärke 312.450 >= 300.000. Sende Nachricht...
+[12:34:05] Audio-Aufnahme gestartet: 2026-03-05_12-34-05.wav
 [12:34:05] Nachricht gesendet. Cooldown: 60s
-[12:34:15] Aufnahme beendet (10s).
-```
-
-Die WAV-Datei liegt danach neben der `BBFon.exe`:
-```
-BBFon\
-├── BBFon.exe
-├── appsettings.json
-├── 2026-03-03_12-34-05.wav   ← Aufnahme
-└── ...
+[12:34:15] Audio-Aufnahme beendet (10s).
 ```
 
 ### Beenden
 
-`Strg+C` drücken. Eine laufende Aufnahme wird sauber abgeschlossen:
-
-```
-[BBFon] Beendet.
-```
+`Strg+C`, `Q` oder `Esc` drücken.
 
 ---
 
@@ -404,7 +411,7 @@ bbfon/
     └── BBFon/
         ├── BBFon.csproj              ← Projektdatei (Target: net8.0-windows)
         ├── Program.cs                ← Einstiegspunkt, Konfiguration, CLI-Parameter
-        ├── AppConfig.cs              ← Konfigurationsmodell
+        ├── AppConfig.cs              ← Konfigurationsmodell (inkl. ThresholdScale-Konstante)
         ├── appsettings.json          ← Benutzer-Konfiguration
         └── Services/
             ├── INotificationService.cs           ← Interface (SendAsync mit Anhängen)
@@ -414,10 +421,11 @@ bbfon/
             ├── SignalNotificationService.cs      ← Signal-Versand via signal-cli
             ├── TelegramNotificationService.cs    ← Telegram-Versand via Bot API
             ├── RetryNotificationService.cs       ← Retry + Netzwerk-Wartelogik
+            ├── DebugNotificationService.cs       ← Konsolen-Ausgabe für Debug-Modus
             ├── LinkService.cs                    ← Signal-Verlinkung (QR-Code)
-            ├── TelegramLinkService.cs            ← Telegram Chat-ID-Ermittlung
+            ├── TelegramLinkService.cs            ← Telegram Chat-ID-Ermittlung & appsettings-Update
             ├── BatteryMonitorService.cs          ← Batterie-Überwachung (Win32 API)
-            ├── CalibrateService.cs               ← Threshold-Kalibrierung
+            ├── CalibrateService.cs               ← Threshold-Kalibrierung mit Balkendiagramm
             ├── SleepPreventionService.cs         ← Schlafmodus verhindern
             ├── ConfigValidator.cs                ← Konfigurationsvalidierung
             └── ConsoleLog.cs                     ← Thread-sichere farbige Ausgabe
@@ -435,7 +443,7 @@ BBFon berechnet den **Root Mean Square (RMS)** der eingehenden PCM-Audiodaten:
 RMS = sqrt( (1/N) * Σ(sample²) )
 ```
 
-Jeder 16-Bit-PCM-Sample wird auf den Bereich `[-1.0, 1.0]` normiert. Der RMS-Wert gibt damit einen guten Eindruck der wahrgenommenen Lautstärke (im Gegensatz zum simplen Maximalwert).
+Jeder 16-Bit-PCM-Sample wird auf den Bereich `[-1.0, 1.0]` normiert. Der Rohwert (0.0–1.0) wird intern mit `1000` multipliziert für die Anzeige und Konfiguration (`ThresholdScale = 1000`).
 
 - Aufnahmeformat: 16.000 Hz, Mono, 16 Bit
 - Puffergröße: 100 ms (1.600 Samples pro Buffer)
@@ -444,33 +452,31 @@ Jeder 16-Bit-PCM-Sample wird auf den Bereich `[-1.0, 1.0]` normiert. Der RMS-Wer
 
 Wenn `Battery.Enabled = true`, prüft BBFon alle `CheckIntervalSeconds` Sekunden den Akkuladestand des Geräts.
 
-**Fallende Flanke:** Eine Benachrichtigung wird **nur einmal** gesendet, wenn der Ladestand den Schwellwert von oben nach unten kreuzt. Solange der Akku unterhalb bleibt, kommt keine weitere Warnung. Erst wenn er wieder aufgeladen wird (über den Schwellwert) und erneut darunter fällt, wird wieder gesendet.
+**Fallende Flanke:** Eine Benachrichtigung wird **nur einmal** gesendet, wenn der Ladestand den Schwellwert von oben nach unten kreuzt. Solange der Akku unterhalb bleibt, kommt keine weitere Warnung.
 
-**Verhalten beim Start:** BBFon liest den aktuellen Ladestand beim Start und merkt sich, ob er über oder unter dem Schwellwert liegt. Ist der Akku beim Start bereits unter dem Schwellwert, wird kein Alarm ausgelöst (kein Fehlstart).
+**Verhalten beim Start:** Ist der Akku beim Start bereits unter dem Schwellwert, wird kein Alarm ausgelöst (kein Fehlstart).
 
-**Desktop-PCs ohne Akku:** BBFon erkennt das und meldet es in der Konsole. Die Überwachung läuft weiter, sendet aber keine Nachrichten.
+**Desktop-PCs ohne Akku:** BBFon erkennt das und meldet es in der Konsole.
 
 **Nachrichtenformat:** `"<Message> (<Prozent>%)"`, z. B. `"Batterie niedrig (18%)"`.
 
 ### Analyse-Mechanismus
 
-Wenn `Analysis.Enabled = true`, wird nicht jeder einzelne Lautstärke-Peak sofort gemeldet. Stattdessen zählt BBFon, wie oft der Pegel innerhalb eines gleitenden Zeitfensters überschritten wurde:
+Wenn `Analysis.Enabled = true`, wird nicht jeder einzelne Lautstärke-Peak sofort gemeldet. BBFon zählt, wie oft der Pegel innerhalb eines gleitenden Zeitfensters überschritten wurde:
 
 ```
 Zeitfenster: 10s | MinTriggerCount: 3
 
-t=0s  Pegel 0.41  → Trigger 1/3
-t=2s  Pegel 0.39  → Trigger 2/3
-t=5s  Pegel 0.44  → Trigger 3/3 ✓ → ALARM, Nachricht senden
-t=13s Pegel 0.40  → Trigger 1/3  (t=0s und t=2s sind aus dem Fenster gefallen)
+t=0s  Pegel 410   → Trigger 1/3
+t=2s  Pegel 390   → Trigger 2/3
+t=5s  Pegel 440   → Trigger 3/3 ✓ → ALARM
+t=13s Pegel 400   → Trigger 1/3  (t=0s und t=2s sind aus dem Fenster gefallen)
 ```
 
 Die Konsole zeigt den aktuellen Zähler live:
 ```
-[12:34:07] Lautstärke: 0.412  Trigger: 2/3 (letzte 10s)
+[12:34:07] Lautstärke: 412.345  Trigger: 2/3 (letzte 10s)
 ```
-
-Nach einem Alarm wird die Triggerliste geleert, damit der nächste Alarm von vorne zählt.
 
 **Empfohlene Werte:**
 
@@ -484,9 +490,9 @@ Nach einem Alarm wird die Triggerliste geleert, damit der nächste Alarm von vor
 
 Wenn `Recording.Enabled: true` gesetzt ist, startet bei jedem Alarm eine WAV-Aufnahme:
 
-- Der erste Audio-Buffer, der den Alarm ausgelöst hat, ist Bestandteil der Aufnahme (kein Aussetzer)
+- Der erste Audio-Buffer, der den Alarm ausgelöst hat, ist Bestandteil der Aufnahme
 - Aufgenommen wird maximal `Recording.DurationSeconds` Sekunden (Standard: 10)
-- Dateiname: `yyyy-MM-dd_HH-mm-ss.wav` (z. B. `2026-03-03_12-34-05.wav`)
+- Dateiname: `yyyy-MM-dd_HH-mm-ss.wav`
 - Speicherort: selber Ordner wie die `BBFon.exe`
 - Format: WAV, 16.000 Hz, Mono, 16 Bit (~320 KB)
 - Nach der Aufnahme: optionale Komprimierung → optional Versand als Anhang → Bereinigung alter Dateien
@@ -496,10 +502,11 @@ Wenn `Recording.Enabled: true` gesetzt ist, startet bei jedem Alarm eine WAV-Auf
 Wenn `Camera.Enabled: true` gesetzt ist, startet bei jedem Alarm eine Kamera-Aufnahme (benötigt FFmpeg):
 
 - Läuft **parallel** zur Audio-Aufnahme, blockiert keine Meldungen
-- Dateiname: `yyyy-MM-dd_HH-mm-ss_cam.mp4` (gleicher Timestamp wie die Audio-Datei)
-- Kamera wird beim ersten Alarm automatisch erkannt (`--list-cameras` für manuelle Auswahl)
+- Dauer: `Recording.DurationSeconds` Sekunden
+- Dateiname: `yyyy-MM-dd_HH-mm-ss_cam.mp4`
+- Kamera wird beim ersten Alarm automatisch erkannt (`--list-video` für manuelle Auswahl)
 - Format `gif`: erst MP4 aufnehmen, dann zu GIF konvertieren, MP4 wird gelöscht
-- `MuxWithAudio: true`: nach beiden Aufnahmen wird das WAV als Tonspur in das Video eingebettet (erfordert `Recording.Enabled: true`)
+- `MuxWithAudio: true`: WAV als Tonspur in das Video einbetten (erfordert `Recording.Enabled: true`)
 
 **Reihenfolge bei aktivem Muxing:**
 1. Audio + Video parallel aufnehmen
@@ -510,7 +517,7 @@ Wenn `Camera.Enabled: true` gesetzt ist, startet bei jedem Alarm eine Kamera-Auf
 
 ### Anhänge senden
 
-Mit `Recording.SendAttachments: true` werden die fertigen Aufnahme-Dateien nach Abschluss aller Nachbearbeitungsschritte automatisch per Telegram/Signal gesendet:
+Mit `Recording.SendAttachments: true` werden die fertigen Aufnahme-Dateien nach Abschluss aller Nachbearbeitungsschritte automatisch gesendet:
 
 - Telegram: per `sendDocument`-API
 - Signal: per `--attachment`-Flag an signal-cli
@@ -518,15 +525,15 @@ Mit `Recording.SendAttachments: true` werden die fertigen Aufnahme-Dateien nach 
 
 ### Cooldown-Mechanismus
 
-Nach jeder gesendeten Nachricht wird der Timestamp gespeichert. Eine neue Nachricht wird nur verschickt, wenn seit der letzten mindestens `CooldownSeconds` vergangen sind. Das verhindert Flut bei anhaltendem Lärm.
+Nach jeder gesendeten Nachricht wird der Timestamp gespeichert. Eine neue Nachricht wird nur verschickt, wenn seit der letzten mindestens `CooldownSeconds` vergangen sind.
 
 ### Provider-Auswahl
 
-Die Auswahl des Notification-Providers erfolgt in `Program.cs` per `switch`-Expression auf `Provider` (case-insensitiv). Beide Provider implementieren `INotificationService` mit `SendAsync(string message, IReadOnlyList<string>? attachments)`. Der `RetryNotificationService` umschließt den gewählten Provider mit Retry-Logik und Netzwerk-Warten.
+Die Auswahl erfolgt per `switch` auf `Provider` (case-insensitiv). Beide Provider implementieren `INotificationService` mit `SendAsync(string message, IReadOnlyList<string>? attachments)`. Der `RetryNotificationService` umschließt den gewählten Provider mit Retry-Logik und Netzwerk-Warten.
 
 ### Signal-Integration
 
-Der Aufruf erfolgt als externer Prozess (`System.Diagnostics.Process`). `signal-cli` wird mit den Parametern `send -m "<message>" -u <sender> <recipient>` aufgerufen. Bei einem Fehler-Exitcode wird die Fehlermeldung aus `stderr` ausgegeben.
+Der Aufruf erfolgt als externer Prozess. `signal-cli` wird mit `send -m "<message>" -u <sender> <recipient>` aufgerufen. Bei einem Fehler-Exitcode wird die Fehlermeldung aus `stderr` ausgegeben.
 
 ### Telegram-Integration
 
@@ -548,10 +555,11 @@ Weitere Details: [TELEGRAM.md](TELEGRAM.md)
 
 ## 9. Fehlerbehebung
 
-### Kein Mikrofon erkannt
+### Kein Mikrofon erkannt / falsches Gerät
 
-- Sicherstellen, dass in den Windows-Soundeinstellungen ein Standard-Aufnahmegerät gesetzt ist
-- Mikrofon-Zugriff in den Windows Datenschutzeinstellungen erlauben:
+- Mit `--list-audio` alle verfügbaren Geräte anzeigen
+- `AudioDevice` in `appsettings.json` auf den gewünschten Gerätenamen setzen (Teilstring genügt)
+- Mikrofon-Zugriff in den Windows-Datenschutzeinstellungen erlauben:
   `Einstellungen → Datenschutz → Mikrofon → Desktop-Apps Zugriff erlauben`
 
 ### Telegram: Nachricht wird nicht gesendet
@@ -569,7 +577,7 @@ Weitere Details: [TELEGRAM.md](TELEGRAM.md)
 ### Lautstärke immer 0.000
 
 - Mikrofon stumm geschaltet oder Pegel auf 0?
-- Falsches Aufnahmegerät als Standard gesetzt?
+- Falsches Aufnahmegerät? Mit `--list-audio` prüfen und `AudioDevice` setzen
 
 ### Batterie-Warnung wird nicht gesendet
 
@@ -579,10 +587,11 @@ Weitere Details: [TELEGRAM.md](TELEGRAM.md)
 
 ### Zu viele / zu wenige Alarme
 
-- `Threshold` anpassen: Werte in der Konsole beobachten und sinnvollen Schwellwert ermitteln
+- `--calibrate` ausführen und empfohlenen `Threshold`-Wert übernehmen
 - `CooldownSeconds` erhöhen, um Nachrichten-Häufigkeit zu reduzieren
+- `Analysis` aktivieren, um Einzelgeräusche zu ignorieren
 
 ### Aufnahme-Datei ist leer oder kaputt
 
-- Passiert, wenn BBFon sofort nach dem Alarm per Strg+C beendet wird – die Aufnahme wird aber auch bei Programmende sauber abgeschlossen
+- Passiert, wenn BBFon sofort nach dem Alarm beendet wird – die Aufnahme wird bei Programmende sauber abgeschlossen
 - Prüfen, ob der Zielordner (neben der EXE) Schreibrechte hat
