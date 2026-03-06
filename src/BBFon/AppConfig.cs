@@ -57,6 +57,7 @@ public class CameraConfig
     public bool MuxWithAudio { get; set; } = false;       // WAV-Aufnahme in Video einbetten
     public bool KeepMuxAudio { get; set; } = false;  // WAV nach erfolgreichem Muxing löschen
     public int ScaleWidth { get; set; } = 320;             // Videobreite in Pixel (0 = keine Skalierung)
+    public string ExtraArgs { get; set; } = "-c:v libx264 -profile:v baseline -pix_fmt yuv420p -movflags +faststart";
 }
 
 public class BatteryConfig

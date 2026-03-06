@@ -36,7 +36,8 @@ public sealed class CameraRecorderService
         var videoPath = Path.Combine(AppContext.BaseDirectory, videoName);
 
         var scaleFilter = (!makeGif && _config.ScaleWidth > 0) ? $" -vf scale={_config.ScaleWidth}:-1" : "";
-        var recordArgs = $"-f dshow -i video=\"{device}\"{scaleFilter} -t {_recordingConfig.DurationSeconds} -y \"{videoPath}\"";
+        var extraArgs = string.IsNullOrWhiteSpace(_config.ExtraArgs) ? "" : $" {_config.ExtraArgs.Trim()}";
+        var recordArgs = $"-f dshow -i video=\"{device}\"{scaleFilter}{extraArgs} -t {_recordingConfig.DurationSeconds} -y \"{videoPath}\"";
         if (!await RunFfmpegAsync(ffmpegPath, recordArgs, _recordingConfig.DurationSeconds + 15, "Kamera-Aufnahme"))
             return null;
 
