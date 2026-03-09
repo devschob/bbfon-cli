@@ -3,20 +3,28 @@ namespace BBFon;
 public class AppConfig
 {
     public const float ThresholdScale = 1000f;
-    public float Threshold { get; set; } = 300f;   // 0–1000 Skala
-    public int CooldownSeconds { get; set; } = 60;
-    public string Message { get; set; } = "Lärm erkannt!";
     public string Provider { get; set; } = "Telegram";
     public string FfmpegPath { get; set; } = "ffmpeg.exe";
     public string AudioDevice { get; set; } = "";   // leer = Standard-Mikrofon
+    public List<TriggerConfig> Triggers { get; set; } = [];
     public StartupConfig Startup { get; set; } = new();
-    public AnalysisConfig Analysis { get; set; } = new();
     public RecordingConfig Recording { get; set; } = new();
     public CompressionConfig Compression { get; set; } = new();
     public CameraConfig Camera { get; set; } = new();
     public BatteryConfig Battery { get; set; } = new();
     public SignalConfig Signal { get; set; } = new();
     public TelegramConfig Telegram { get; set; } = new();
+}
+
+public class TriggerConfig
+{
+    public float Threshold { get; set; } = 300f;   // 0–1000 Skala
+    public int CooldownSeconds { get; set; } = 60;
+    public string Message { get; set; } = "Lärm erkannt!";
+    public bool IsRecording { get; set; } = false;
+    public bool SuppressIfHigherFires { get; set; } = false;
+    public int MinDurationSeconds { get; set; } = 0;  // 0 = deaktiviert
+    public AnalysisConfig Analysis { get; set; } = new();
 }
 
 public class StartupConfig
@@ -34,7 +42,6 @@ public class AnalysisConfig
 
 public class RecordingConfig
 {
-    public bool Enabled { get; set; } = false;
     public int DurationSeconds { get; set; } = 10;
     public int MaxFiles { get; set; } = 0;    // 0 = unbegrenzt
     public int MaxAgeDays { get; set; } = 30;  // 0 = unbegrenzt

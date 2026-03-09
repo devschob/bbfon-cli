@@ -6,14 +6,31 @@ public static class ConfigValidator
     {
         var errors = new List<string>();
 
-        if (cfg.Threshold <= 0f || cfg.Threshold > AppConfig.ThresholdScale)
-            errors.Add($"Threshold muss zwischen 0.001 und {AppConfig.ThresholdScale} liegen (aktuell: {cfg.Threshold:F3})");
+        if (cfg.Triggers.Count == 0)
+            errors.Add("Mindestens ein Trigger muss in der Triggers-Liste konfiguriert sein");
 
-        if (cfg.CooldownSeconds < 0)
-            errors.Add("CooldownSeconds darf nicht negativ sein");
+        for (int i = 0; i < cfg.Triggers.Count; i++)
+        {
+            var t = cfg.Triggers[i];
+            var p = $"Triggers[{i}]";
 
-        if (string.IsNullOrWhiteSpace(cfg.Message))
-            errors.Add("Message darf nicht leer sein");
+            if (t.Threshold <= 0f || t.Threshold > AppConfig.ThresholdScale)
+                errors.Add($"{p}.Threshold muss zwischen 0.001 und {AppConfig.ThresholdScale} liegen (aktuell: {t.Threshold:F3})");
+
+            if (t.CooldownSeconds < 0)
+                errors.Add($"{p}.CooldownSeconds darf nicht negativ sein");
+
+            if (string.IsNullOrWhiteSpace(t.Message))
+                errors.Add($"{p}.Message darf nicht leer sein");
+
+            if (t.Analysis.Enabled)
+            {
+                if (t.Analysis.WindowSeconds <= 0)
+                    errors.Add($"{p}.Analysis.WindowSeconds muss größer als 0 sein");
+                if (t.Analysis.MinTriggerCount <= 0)
+                    errors.Add($"{p}.Analysis.MinTriggerCount muss größer als 0 sein");
+            }
+        }
 
         switch (cfg.Provider.ToLowerInvariant())
         {
@@ -36,14 +53,6 @@ public static class ConfigValidator
             default:
                 errors.Add($"Unbekannter Provider \"{cfg.Provider}\". Erlaubt: Signal, Telegram");
                 break;
-        }
-
-        if (cfg.Analysis.Enabled)
-        {
-            if (cfg.Analysis.WindowSeconds <= 0)
-                errors.Add("Analysis.WindowSeconds muss größer als 0 sein");
-            if (cfg.Analysis.MinTriggerCount <= 0)
-                errors.Add("Analysis.MinTriggerCount muss größer als 0 sein");
         }
 
         if (cfg.Battery.Enabled)

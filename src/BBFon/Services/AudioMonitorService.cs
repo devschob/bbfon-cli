@@ -1,3 +1,4 @@
+using System.Text;
 using NAudio.Wave;
 
 namespace BBFon.Services;
@@ -9,7 +10,6 @@ public sealed class AudioMonitorService : IDisposable
     private readonly bool _debugMode;
     private readonly CameraRecorderService? _camera;
     private WaveInEvent? _waveIn;
-    private DateTime _lastSent = DateTime.MinValue;
     private volatile bool _stopping;
 
     private bool _isRecording;
@@ -18,7 +18,14 @@ public sealed class AudioMonitorService : IDisposable
     private DateTime _recordingStopAt;
     private Task<string?>? _currentCameraTask;
 
-    private readonly List<DateTime> _triggerTimestamps = [];
+    private sealed class TriggerState
+    {
+        public DateTime LastSent = DateTime.MinValue;
+        public readonly List<DateTime> Timestamps = [];
+        public DateTime? AboveThresholdSince = null;
+    }
+
+    private TriggerState[] _triggerStates;
 
     public AudioMonitorService(AppConfig config, INotificationService notification, bool debugMode, CameraRecorderService? camera = null)
     {
@@ -26,6 +33,14 @@ public sealed class AudioMonitorService : IDisposable
         _notification = notification;
         _debugMode = debugMode;
         _camera = camera;
+        _triggerStates = CreateStates(config.Triggers.Count);
+    }
+
+    private static TriggerState[] CreateStates(int count)
+    {
+        var states = new TriggerState[count];
+        for (int i = 0; i < count; i++) states[i] = new TriggerState();
+        return states;
     }
 
     public void Start(CancellationToken ct)
@@ -34,24 +49,35 @@ public sealed class AudioMonitorService : IDisposable
         _waveIn.StartRecording();
 
         var deviceLabel = string.IsNullOrWhiteSpace(_config.AudioDevice) ? "Standard-Mikrofon" : $"\"{_config.AudioDevice}\"";
-        ConsoleLog.Info($"[BBFon] Überwache {deviceLabel}... (Schwellwert: {_config.Threshold:F3})");
+        ConsoleLog.Info($"[BBFon] Überwache {deviceLabel}...");
 
-        if (_config.Analysis.Enabled)
-            ConsoleLog.Info($"[BBFon] Analyse aktiv: mind. {_config.Analysis.MinTriggerCount}x Trigger in {_config.Analysis.WindowSeconds}s");
+        for (int i = 0; i < _config.Triggers.Count; i++)
+        {
+            var t = _config.Triggers[i];
+            var parts = new List<string>();
+            if (t.Analysis.Enabled)
+                parts.Add($"Analyse: mind. {t.Analysis.MinTriggerCount}x in {t.Analysis.WindowSeconds}s");
+            if (t.MinDurationSeconds > 0)
+                parts.Add($"min. {t.MinDurationSeconds}s Dauer");
+            var analyseInfo = parts.Count > 0 ? string.Join(", ", parts) : "direkt";
+            var recInfo = t.IsRecording ? ", Aufnahme" : "";
+            ConsoleLog.Info($"[BBFon]   T{i + 1}: Schwellwert {t.Threshold:F3}, Cooldown {t.CooldownSeconds}s, {analyseInfo}{recInfo} → \"{t.Message}\"");
+        }
 
-        if (_config.Recording.Enabled)
+        bool anyRecording = _config.Triggers.Any(t => t.IsRecording);
+        if (anyRecording)
         {
             var limits = new List<string>();
             if (_config.Recording.MaxFiles > 0) limits.Add($"max. {_config.Recording.MaxFiles} Dateien");
             if (_config.Recording.MaxAgeDays > 0) limits.Add($"max. {_config.Recording.MaxAgeDays} Tage");
             var limitInfo = limits.Count > 0 ? $", Bereinigung: {string.Join(", ", limits)}" : "";
-            ConsoleLog.Info($"[BBFon] Audio-Aufnahme bei Alarm: aktiv (max. 10s, WAV neben EXE{limitInfo})");
+            ConsoleLog.Info($"[BBFon] Audio-Aufnahme bei Alarm: aktiv (max. {_config.Recording.DurationSeconds}s, WAV neben EXE{limitInfo})");
         }
 
         if (_camera != null)
         {
             var fmt = _config.Camera.Format.ToUpperInvariant();
-            var mux = _config.Camera.MuxWithAudio && _config.Recording.Enabled && _config.Camera.Enabled ? ", mit Audio" : "";
+            var mux = _config.Camera.MuxWithAudio && anyRecording && _config.Camera.Enabled ? ", mit Audio" : "";
             ConsoleLog.Info($"[BBFon] Kamera-Aufnahme bei Alarm: aktiv ({_config.Recording.DurationSeconds}s, {fmt}{mux})");
         }
 
@@ -141,6 +167,15 @@ public sealed class AudioMonitorService : IDisposable
         var now = DateTime.Now;
         float rms = CalculateRms(e.Buffer, e.BytesRecorded);
 
+        // Hot-reload: Trigger-Zustand anpassen wenn Anzahl geändert
+        if (_triggerStates.Length != _config.Triggers.Count)
+        {
+            var newStates = new TriggerState[_config.Triggers.Count];
+            for (int i = 0; i < newStates.Length; i++)
+                newStates[i] = i < _triggerStates.Length ? _triggerStates[i] : new TriggerState();
+            _triggerStates = newStates;
+        }
+
         // Laufende Aufnahme bedienen
         if (_isRecording)
         {
@@ -150,75 +185,106 @@ public sealed class AudioMonitorService : IDisposable
                 StopRecording();
         }
 
-        // Trigger-Analyse
-        float threshold = _config.Threshold / AppConfig.ThresholdScale;
-        bool aboveThreshold = rms >= threshold;
-        int triggerCount = 0;
+        // Trigger-Analyse: Timestamps aktualisieren und Zustand berechnen
+        int n = _config.Triggers.Count;
+        var aboveThreshold = new bool[n];
+        var triggerCount   = new int[n];
+        var durationSecs   = new double[n];
+        var analysisOk     = new bool[n];
+        var cooldownOk     = new bool[n];
 
-        if (_config.Analysis.Enabled)
+        for (int i = 0; i < n; i++)
         {
-            if (aboveThreshold)
-                _triggerTimestamps.Add(now);
-            _triggerTimestamps.RemoveAll(t => (now - t).TotalSeconds > _config.Analysis.WindowSeconds);
-            triggerCount = _triggerTimestamps.Count;
-        }
+            var trigger = _config.Triggers[i];
+            var state   = _triggerStates[i];
+            float thr   = trigger.Threshold / AppConfig.ThresholdScale;
+            aboveThreshold[i] = rms >= thr;
 
-        bool analysisOk = _config.Analysis.Enabled ? triggerCount >= _config.Analysis.MinTriggerCount : aboveThreshold;
-        bool cooldownOk = (now - _lastSent).TotalSeconds >= _config.CooldownSeconds;
+            // Kontinuierliche Dauer tracken
+            if (aboveThreshold[i])
+                state.AboveThresholdSince ??= now;
+            else
+                state.AboveThresholdSince = null;
+            durationSecs[i] = state.AboveThresholdSince.HasValue
+                ? (now - state.AboveThresholdSince.Value).TotalSeconds : 0;
+
+            if (trigger.Analysis.Enabled)
+            {
+                if (aboveThreshold[i]) state.Timestamps.Add(now);
+                state.Timestamps.RemoveAll(t => (now - t).TotalSeconds > trigger.Analysis.WindowSeconds);
+                triggerCount[i] = state.Timestamps.Count;
+            }
+
+            bool countOk    = !trigger.Analysis.Enabled || triggerCount[i] >= trigger.Analysis.MinTriggerCount;
+            bool durationOk = trigger.MinDurationSeconds <= 0 || durationSecs[i] >= trigger.MinDurationSeconds;
+            analysisOk[i]   = countOk && durationOk;
+            cooldownOk[i]   = (now - state.LastSent).TotalSeconds >= trigger.CooldownSeconds;
+        }
 
         // Rollende Konsolenzeile
-        var lineColor = analysisOk ? ConsoleColor.Red : aboveThreshold ? ConsoleColor.Yellow : ConsoleColor.Gray;
-        if (_config.Analysis.Enabled)
+        bool anyAlarmOk = Array.Exists(analysisOk, x => x);
+        bool anyAbove   = Array.Exists(aboveThreshold, x => x);
+        var lineColor = anyAlarmOk ? ConsoleColor.Red : anyAbove ? ConsoleColor.Yellow : ConsoleColor.Gray;
+
+        var sb = new StringBuilder($"\r[{now:HH:mm:ss}] Lautstärke: {rms * AppConfig.ThresholdScale:F3}");
+        for (int i = 0; i < n; i++)
         {
-            string cooldownHint = _debugMode && analysisOk && !cooldownOk
-                ? $" [Cooldown: {(_config.CooldownSeconds - (now - _lastSent).TotalSeconds):F0}s]" : "";
-            ConsoleLog.Inline($"\r[{now:HH:mm:ss}] Lautstärke: {rms * AppConfig.ThresholdScale:F3}  Trigger: {triggerCount}/{_config.Analysis.MinTriggerCount} (letzte {_config.Analysis.WindowSeconds}s){cooldownHint}   ", lineColor);
+            var trigger = _config.Triggers[i];
+            var state   = _triggerStates[i];
+            if (trigger.Analysis.Enabled)
+                sb.Append($"  T{i + 1}:{triggerCount[i]}/{trigger.Analysis.MinTriggerCount}");
+            else if (aboveThreshold[i])
+                sb.Append($"  T{i + 1}:[!]");
+            if (trigger.MinDurationSeconds > 0 && aboveThreshold[i])
+                sb.Append($"({durationSecs[i]:F1}s/{trigger.MinDurationSeconds}s)");
+            if (_debugMode && analysisOk[i] && !cooldownOk[i])
+                sb.Append($"(cd:{(trigger.CooldownSeconds - (now - state.LastSent).TotalSeconds):F0}s)");
         }
-        else
-        {
-            string marker = _debugMode && aboveThreshold ? " [!]" : "";
-            string cooldownHint = _debugMode && aboveThreshold && !cooldownOk
-                ? $" [Cooldown: {(_config.CooldownSeconds - (now - _lastSent).TotalSeconds):F0}s]" : "";
-            ConsoleLog.Inline($"\r[{now:HH:mm:ss}] Lautstärke: {rms * AppConfig.ThresholdScale:F3}{marker}{cooldownHint}   ", lineColor);
-        }
+        sb.Append("   ");
+        ConsoleLog.Inline(sb.ToString(), lineColor);
 
         // Alarm auslösen
-        if (analysisOk && cooldownOk)
+        string? alarmTimestamp = null;
+        for (int i = 0; i < n; i++)
         {
-            _lastSent = now;
-            _triggerTimestamps.Clear();
+            if (!analysisOk[i] || !cooldownOk[i]) continue;
 
-            ConsoleLog.Alarm($"\n[{now:HH:mm:ss}] ALARM! Lautstärke {rms * AppConfig.ThresholdScale:F3} >= {_config.Threshold:F3}. Sende Nachricht...");
+            var trigger = _config.Triggers[i];
 
-            var timestamp = now.ToString("yyyy-MM-dd_HH-mm-ss");
-
-            // Kamera starten
-            if (_camera != null)
-                _currentCameraTask = Task.Run(() => _camera.RecordAsync(timestamp));
-
-            if (_config.Recording.Enabled && !_isRecording)
+            // Unterdrücken wenn ein Trigger mit höherem Threshold ebenfalls feuert
+            if (trigger.SuppressIfHigherFires)
             {
-                // Audio-Aufnahme starten – StopRecording koordiniert danach Camera + Muxing
-                StartRecording(e.Buffer, e.BytesRecorded, timestamp, _config.Recording.DurationSeconds);
-            }
-            else if (_camera != null)
-            {
-                // Nur Kamera aktiv (kein --record) – unabhängig behandeln
-                var camTask = _currentCameraTask;
-                _currentCameraTask = null;
-                _ = Task.Run(async () =>
+                bool higherFires = false;
+                for (int j = 0; j < n; j++)
                 {
-                    var path = await (camTask ?? Task.FromResult<string?>(null));
-                    if (path != null)
+                    if (j != i && analysisOk[j] && cooldownOk[j] && _config.Triggers[j].Threshold > trigger.Threshold)
                     {
-                        ConsoleLog.Success($"[{DateTime.Now:HH:mm:ss}] Kamera-Aufnahme: {Path.GetFileName(path)}");
-                        await TrySendAttachmentsAsync([path]);
+                        higherFires = true;
+                        break;
                     }
-                    CleanupRecordings();
-                });
+                }
+                if (higherFires) continue;
+            }
+            var state   = _triggerStates[i];
+            state.LastSent = now;
+            state.Timestamps.Clear();
+
+            ConsoleLog.Alarm($"\n[{now:HH:mm:ss}] ALARM T{i + 1}! Lautstärke {rms * AppConfig.ThresholdScale:F3} >= {trigger.Threshold:F3}. Sende Nachricht...");
+
+            if (trigger.IsRecording)
+            {
+                alarmTimestamp ??= now.ToString("yyyy-MM-dd_HH-mm-ss");
+
+                // Kamera starten (nur eine Aufnahme gleichzeitig)
+                if (_camera != null && (_currentCameraTask == null || _currentCameraTask.IsCompleted))
+                    _currentCameraTask = Task.Run(() => _camera.RecordAsync(alarmTimestamp));
+
+                // Audio-Aufnahme starten (nur eine gleichzeitig)
+                if (!_isRecording)
+                    StartRecording(e.Buffer, e.BytesRecorded, alarmTimestamp, _config.Recording.DurationSeconds);
             }
 
-            _ = SendNotificationAsync();
+            _ = SendNotificationAsync(trigger.Message, trigger.CooldownSeconds);
         }
     }
 
@@ -239,7 +305,7 @@ public sealed class AudioMonitorService : IDisposable
         _isRecording = false;
         _waveWriter?.Dispose();
         _waveWriter = null;
-        ConsoleLog.Info($"\n[{DateTime.Now:HH:mm:ss}] Audio-Aufnahme beendet (10s).");
+        ConsoleLog.Info($"\n[{DateTime.Now:HH:mm:ss}] Audio-Aufnahme beendet ({_config.Recording.DurationSeconds}s).");
 
         var wavPath    = _currentWavPath;
         var cameraTask = _currentCameraTask;
@@ -351,12 +417,12 @@ public sealed class AudioMonitorService : IDisposable
         }
     }
 
-    private async Task SendNotificationAsync()
+    private async Task SendNotificationAsync(string message, int cooldownSeconds)
     {
         try
         {
-            await _notification.SendAsync(_config.Message);
-            ConsoleLog.Success($"[{DateTime.Now:HH:mm:ss}] Nachricht gesendet. Cooldown: {_config.CooldownSeconds}s");
+            await _notification.SendAsync(message);
+            ConsoleLog.Success($"[{DateTime.Now:HH:mm:ss}] Nachricht gesendet. Cooldown: {cooldownSeconds}s");
         }
         catch (Exception ex)
         {

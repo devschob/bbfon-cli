@@ -201,17 +201,22 @@ static void PrintSettings(AppConfig cfg)
 {
     ConsoleLog.Info("[BBFon] --- Einstellungen ---");
     ConsoleLog.Info($"[BBFon]   Provider:       {cfg.Provider}");
-    ConsoleLog.Info($"[BBFon]   Schwellwert:    {cfg.Threshold:F3}");
-    ConsoleLog.Info($"[BBFon]   Cooldown:       {cfg.CooldownSeconds}s");
-    ConsoleLog.Info($"[BBFon]   Nachricht:      {cfg.Message}");
     var audioDevice = string.IsNullOrWhiteSpace(cfg.AudioDevice) ? "Standard" : $"\"{cfg.AudioDevice}\"";
     ConsoleLog.Info($"[BBFon]   Audio-Eingang:  {audioDevice}");
     ConsoleLog.Info($"[BBFon]   Startnachricht: {(cfg.Startup.Enabled ? $"\"{cfg.Startup.Message}\"" : "inaktiv")}");
-    ConsoleLog.Info($"[BBFon]   Analyse:        {(cfg.Analysis.Enabled ? $"aktiv ({cfg.Analysis.MinTriggerCount}x in {cfg.Analysis.WindowSeconds}s)" : "inaktiv")}");
+    ConsoleLog.Info($"[BBFon]   Triggers ({cfg.Triggers.Count}):");
+    for (int i = 0; i < cfg.Triggers.Count; i++)
+    {
+        var t = cfg.Triggers[i];
+        var analyse = t.Analysis.Enabled ? $"Analyse {t.Analysis.MinTriggerCount}x/{t.Analysis.WindowSeconds}s" : "direkt";
+        var rec = t.IsRecording ? " | Aufnahme" : "";
+        ConsoleLog.Info($"[BBFon]     T{i + 1}: {t.Threshold:F3} | Cooldown {t.CooldownSeconds}s | {analyse}{rec} → \"{t.Message}\"");
+    }
+    bool anyRec = cfg.Triggers.Any(t => t.IsRecording);
     var recParts = new List<string>();
-    if (cfg.Recording.MaxFiles > 0 && cfg.Recording.Enabled)  recParts.Add($"max. {cfg.Recording.MaxFiles} Dateien");
-    if (cfg.Recording.MaxAgeDays > 0 && cfg.Recording.Enabled) recParts.Add($"max. {cfg.Recording.MaxAgeDays} Tage");
-    if (cfg.Recording.SendAttachments && cfg.Recording.Enabled) recParts.Add("Anhänge senden");
+    if (cfg.Recording.MaxFiles > 0 && anyRec)   recParts.Add($"max. {cfg.Recording.MaxFiles} Dateien");
+    if (cfg.Recording.MaxAgeDays > 0 && anyRec) recParts.Add($"max. {cfg.Recording.MaxAgeDays} Tage");
+    if (cfg.Recording.SendAttachments && anyRec) recParts.Add("Anhänge senden");
     ConsoleLog.Info($"[BBFon]   Aufnahme:       {(recParts.Count > 0 ? string.Join(", ", recParts) : "keine (reine Lautstärken-Analyse)")}");
     ConsoleLog.Info($"[BBFon]   Komprimierung:  {(cfg.Compression.Enabled ? $"aktiv ({cfg.Compression.Format.ToUpperInvariant()}, {cfg.Compression.BitrateKbps}kbps, WAV behalten: {cfg.Compression.KeepWavAudio})" : "inaktiv")}");
     var camDevice = string.IsNullOrWhiteSpace(cfg.Camera.DeviceName) ? "auto" : $"\"{cfg.Camera.DeviceName}\"";
