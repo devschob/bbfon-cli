@@ -23,14 +23,13 @@ public class SignalNotificationService : INotificationService
         }
         catch { /* receive ist optional – Fehler ignorieren */ }
 
-        var sendArgs = new List<string> { "-u", _config.Sender, "send", "-m", message };
+        var sendArgs = new List<string> { "-u", _config.Sender, "send", "-m", message, _config.Recipient };
         if (attachments?.Count > 0)
             foreach (var a in attachments)
             {
                 sendArgs.Add("--attachment");
                 sendArgs.Add(Path.GetFullPath(a));
             }
-        sendArgs.Add(_config.Recipient);
 
         await RunSignalCliAsync(cliPath, sendArgs);
     }
