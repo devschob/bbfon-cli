@@ -3,6 +3,41 @@ using BBFon.Services;
 using Microsoft.Extensions.Configuration;
 
 
+if (args.Contains("--version") || args.Contains("-v"))
+{
+    var v = System.Diagnostics.FileVersionInfo.GetVersionInfo(Environment.ProcessPath!);
+    Console.WriteLine($"BBFon {v.FileVersion}");
+    return;
+}
+
+if (args.Contains("--help") || args.Contains("-h"))
+{
+    Console.WriteLine("""
+        BBFon – Babyfon / Geräusch-Monitor
+
+        Verwendung:
+          bbfon [Optionen]
+
+        Optionen:
+          --provider <Signal|Telegram>   Benachrichtigungs-Provider setzen
+          --link [Telefonnummer]         Signal-Gerät verknüpfen / Telegram-Token setzen
+          --test                         Testnachricht senden und beenden
+          --calibrate                    Hintergrundlärm messen, Threshold vorschlagen
+          --list-video                   Verfügbare Kamera-Geräte auflisten
+          --list-audio                   Verfügbare Audio-Eingabegeräte auflisten
+          --debug, -d                    Debug-Modus (kein echtes Senden)
+          --version, -v                  Programmversion anzeigen
+          --help, -h                     Diese Hilfe anzeigen
+
+        Beispiele:
+          bbfon --provider Signal --link +4912345678
+          bbfon --provider Telegram --link <BOT_TOKEN>
+          bbfon --test
+          bbfon --debug
+        """);
+    return;
+}
+
 bool debugMode         = args.Contains("--debug")        || args.Contains("-d");
 bool linkMode          = args.Contains("--link");
 var  linkArgIdx        = Array.IndexOf(args, "--link");
