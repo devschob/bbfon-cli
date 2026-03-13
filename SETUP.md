@@ -259,37 +259,48 @@ Oder alternativ: einen Wrapper `signal-cli.bat` direkt neben der EXE anlegen:
 
 Dann bleibt `"CliPath": "signal-cli.bat"` der Standard.
 
-### Schritt 4 – Absender-Nummer registrieren
+### Schritt 4 – Mit BBFon verknüpfen (empfohlen)
 
-BBFon benötigt eine **eigene Handynummer als Absender** (z. B. eine alte SIM-Karte oder eine VoIP-Nummer).
+Der einfachste Weg: Signal bereits auf dem Smartphone nutzen und BBFon als verknüpftes Gerät einrichten. Nummer, Provider und Verlinkung in einem Schritt:
+
+```cmd
+BBFon.exe --provider Signal --link +4917612345678
+```
+
+BBFon trägt die Nummer automatisch in `appsettings.json` ein (Sender + Recipient) und zeigt den QR-Code an. QR-Code in der Signal-App scannen:
+`Einstellungen → Verknüpfte Geräte → (+) Gerät hinzufügen`
+
+Danach ist BBFon direkt einsatzbereit.
+
+### Schritt 4 (alternativ) – Neue Nummer registrieren
+
+Wenn du eine eigene Absender-Nummer verwenden möchtest (z. B. alte SIM-Karte):
 
 ```cmd
 signal-cli.bat -u +4912345678 register
+signal-cli.bat -u +4912345678 verify 123456
 ```
 
-Signal sendet einen SMS-Code an diese Nummer:
+Dann Provider und Nummer setzen:
 
 ```cmd
-signal-cli.bat -u +4912345678 verify 123456
+BBFon.exe --provider Signal
+```
+
+Und `appsettings.json` manuell befüllen:
+
+```json
+"Signal": {
+  "CliPath": "signal-cli\\bin\\signal-cli.bat",
+  "Sender": "+4912345678",
+  "Recipient": "+4987654321"
+}
 ```
 
 ### Schritt 5 – Verbindung testen
 
 ```cmd
-signal-cli.bat send -m "Testmessage" -u +4912345678 +4987654321
-```
-
-Wenn die Nachricht ankommt, ist alles korrekt konfiguriert.
-
-### Schritt 6 – appsettings.json befüllen
-
-```json
-"Provider": "Signal",
-"Signal": {
-  "CliPath": "signal-cli.bat",
-  "Sender": "+4912345678",
-  "Recipient": "+4987654321"
-}
+BBFon.exe --test
 ```
 
 ---
@@ -303,7 +314,8 @@ Wenn die Nachricht ankommt, ist alles korrekt konfiguriert.
 | `--debug` | `-d` | Debug-Modus: keine Nachrichten, ausführliche Konsolenausgabe |
 | `--test` | – | Sendet sofort eine Testnachricht und beendet sich |
 | `--calibrate` | – | Misst 10s Hintergrundrauschen, schlägt `Threshold`-Wert vor und zeigt Balkendiagramm |
-| `--link` | – | **Signal:** QR-Code anzeigen und verknüpfen. **Telegram:** `--link <TOKEN>` – Chat-ID ermitteln und in appsettings.json speichern |
+| `--provider <Signal\|Telegram>` | – | Setzt den aktiven Provider in `appsettings.json` und beendet sich (kombinierbar mit `--link` / `--test`) |
+| `--link [Wert]` | – | **Signal:** `--link +4917612345678` – Nummer in appsettings.json speichern und QR-Code zur Verlinkung anzeigen. **Telegram:** `--link <TOKEN>` – Chat-ID ermitteln und Token + Chat-ID in appsettings.json speichern |
 | `--list-audio` | – | Verfügbare Mikrofon-/Audio-Eingabegeräte anzeigen |
 | `--list-video` | – | Verfügbare DirectShow-Kamerageräte anzeigen (benötigt FFmpeg) |
 
@@ -570,9 +582,10 @@ Weitere Details: [TELEGRAM.md](TELEGRAM.md)
 
 ### Signal: signal-cli startet nicht
 
-- Java installiert und im PATH? `java -version` im CMD testen
-- Pfad zu `signal-cli.bat` korrekt? Absoluten Pfad zum Testen verwenden
-- Nummer registriert und verifiziert?
+- Java installiert und im PATH? `java -version` im CMD testen – mind. Java 17, empfohlen Java 21: https://adoptium.net/
+- BBFon zeigt beim Start automatisch eine Warnung, wenn Java fehlt oder die Version zu alt ist
+- Pfad zu `signal-cli.bat` korrekt? Standard bei Installation neben der EXE: `signal-cli\bin\signal-cli.bat`
+- Nummer registriert und verifiziert? Oder als verknüpftes Gerät eingerichtet (`BBFon.exe --link +49...`)?
 
 ### Lautstärke immer 0.000
 

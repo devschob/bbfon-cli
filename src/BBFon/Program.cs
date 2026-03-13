@@ -12,6 +12,22 @@ bool testMode          = args.Contains("--test");
 bool calibrateMode     = args.Contains("--calibrate");
 bool listCamerasMode   = args.Contains("--list-video");
 bool listAudioMode     = args.Contains("--list-audio");
+var  providerArgIdx    = Array.IndexOf(args, "--provider");
+var  providerArg       = providerArgIdx >= 0 && providerArgIdx + 1 < args.Length
+                             ? args[providerArgIdx + 1] : null;
+
+if (providerArg != null)
+{
+    if (!providerArg.Equals("Signal", StringComparison.OrdinalIgnoreCase) &&
+        !providerArg.Equals("Telegram", StringComparison.OrdinalIgnoreCase))
+    {
+        ConsoleLog.Error($"[BBFon] Unbekannter Provider \"{providerArg}\". Erlaubt: Signal, Telegram");
+        return;
+    }
+    SetProviderInAppSettings(providerArg);
+    ConsoleLog.Success($"[BBFon] Provider auf \"{providerArg}\" gesetzt.");
+    if (!linkMode && !testMode) return;
+}
 
 var configRoot = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
@@ -21,10 +37,19 @@ var configRoot = new ConfigurationBuilder()
 var appConfig = configRoot.Get<AppConfig>()
     ?? throw new InvalidOperationException("appsettings.json konnte nicht geladen werden.");
 
+if (appConfig.Provider.Equals("Signal", StringComparison.OrdinalIgnoreCase))
+    CheckJavaVersion();
+
 // --link: Verlinkung durchführen und beenden
 if (linkMode)
 {
-    if (appConfig.Provider.Equals("Telegram", StringComparison.OrdinalIgnoreCase) || linkToken != null)
+    if (appConfig.Provider.Equals("Signal", StringComparison.OrdinalIgnoreCase))
+    {
+        await new LinkService(appConfig.Signal).RunAsync(linkToken);
+        return;
+    }
+
+    if (appConfig.Provider.Equals("Telegram", StringComparison.OrdinalIgnoreCase))
     {
         var token = linkToken ?? appConfig.Telegram.BotToken;
         if (string.IsNullOrWhiteSpace(token))
@@ -34,12 +59,6 @@ if (linkMode)
             return;
         }
         await new TelegramLinkService().RunAsync(token);
-        return;
-    }
-
-    if (appConfig.Provider.Equals("Signal", StringComparison.OrdinalIgnoreCase))
-    {
-        await new LinkService(appConfig.Signal).RunAsync();
         return;
     }
 
@@ -100,6 +119,8 @@ if (errors.Count > 0)
         ConsoleLog.Error($"  ! {err}");
     return;
 }
+
+
 
 ConsoleLog.Info($"[BBFon] Starte... | Provider: {appConfig.Provider}{(debugMode ? " | DEBUG-Modus" : "")}");
 PrintSettings(appConfig);
@@ -196,6 +217,66 @@ monitor.Start(cts.Token);
 ConsoleLog.Info("\n[BBFon] Beendet.");
 
 // --- Lokale Funktionen ---
+
+static void CheckJavaVersion()
+{
+    try
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName               = "java",
+            Arguments              = "-version",
+            UseShellExecute        = false,
+            RedirectStandardError  = true,
+            RedirectStandardOutput = true,
+            CreateNoWindow         = true
+        };
+        using var p = System.Diagnostics.Process.Start(psi);
+        if (p == null) { WarnJavaNotFound(); return; }
+
+        // java -version schreibt auf stderr
+        var output = p.StandardError.ReadToEnd();
+        p.WaitForExit();
+
+        // "java version \"1.8.0\"" oder "openjdk version \"21.0.1\""
+        var match = System.Text.RegularExpressions.Regex.Match(output, @"version ""(\d+)(?:\.(\d+))?");
+        if (!match.Success) { WarnJavaNotFound(); return; }
+
+        int major = int.Parse(match.Groups[1].Value);
+        // Java 8 und älter: major == 1, minor ist die echte Version
+        if (major == 1 && match.Groups[2].Success)
+            major = int.Parse(match.Groups[2].Value);
+
+        if (major < 25)
+        {
+            ConsoleLog.Warning($"[BBFon] Java {major} erkannt – signal-cli benötigt mindestens Java 25 (empfohlen: Java 25).");
+            ConsoleLog.Warning("[BBFon] Java 25 installieren: winget install EclipseAdoptium.Temurin.25.JDK");
+        }
+    }
+    catch
+    {
+        WarnJavaNotFound();
+    }
+}
+
+static void SetProviderInAppSettings(string provider)
+{
+    var path = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+    var json = File.ReadAllText(path);
+    var root = System.Text.Json.Nodes.JsonNode.Parse(json)?.AsObject()
+        ?? throw new InvalidOperationException("appsettings.json konnte nicht geparst werden.");
+
+    root["Provider"] = provider;
+
+    var opts = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+    File.WriteAllText(path, root.ToJsonString(opts));
+}
+
+static void WarnJavaNotFound()
+{
+    ConsoleLog.Warning("[BBFon] Java nicht gefunden – signal-cli wird nicht funktionieren.");
+    ConsoleLog.Warning("[BBFon] Java 21 installieren: https://adoptium.net/");
+}
 
 static void PrintSettings(AppConfig cfg)
 {

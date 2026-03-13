@@ -75,3 +75,5 @@ x64/
 .Trashes
 ehthumbs.db
 Thumbs.db
+/.claude/settings.local.json
+/src/Packages

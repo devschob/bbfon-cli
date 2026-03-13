@@ -76,14 +76,18 @@ BBFon sendet dann Nachrichten an deine eigene Nummer → sie landen im **Notizen
 
 ### Mit BBFon-Parameter --link (einfachste Methode)
 
-BBFon übernimmt den gesamten Prozess und zeigt den QR-Code direkt in der Konsole an:
+BBFon übernimmt den gesamten Prozess und zeigt den QR-Code direkt in der Konsole an. Die Handynummer wird dabei **automatisch in `appsettings.json` eingetragen** (Sender + Recipient):
 
 ```cmd
-BBFon.exe --link
+BBFon.exe --provider Signal --link +4917612345678
 ```
+
+> `--provider Signal` setzt den Provider in `appsettings.json` – einmalig nötig, danach kann `--provider` weggelassen werden.
 
 Ausgabe:
 ```
+[BBFon] Provider auf "Signal" gesetzt.
+[BBFon] Nummer +4917612345678 in appsettings.json eingetragen (Sender + Recipient).
 [BBFon] Starte Signal-Verlinkung...
 [BBFon] signal-cli wird gestartet, bitte warten...
 
@@ -99,7 +103,9 @@ Ausgabe:
 [BBFon] Erfolgreich verknüpft! BBFon kann jetzt Signal nutzen.
 ```
 
-Danach in `appsettings.json` Sender und Recipient auf die eigene Nummer setzen, dann BBFon normal starten.
+Danach BBFon normal starten – `appsettings.json` ist bereits vollständig konfiguriert.
+
+> **Ohne Nummer:** `BBFon.exe --link` funktioniert weiterhin, aber Sender und Recipient müssen danach manuell in `appsettings.json` eingetragen werden.
 
 ### Manuell (ohne --link)
 

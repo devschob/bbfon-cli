@@ -77,7 +77,7 @@ public class BatteryConfig
 
 public class SignalConfig
 {
-    public string CliPath { get; set; } = "signal-cli.bat";
+    public string CliPath { get; set; } = "signal-cli\\\\bin\\\\signal-cli.bat";
     public string Sender { get; set; } = "";
     public string Recipient { get; set; } = "";
 }

@@ -15,24 +15,57 @@ public class SignalNotificationService : INotificationService
             ? _config.CliPath
             : Path.Combine(AppContext.BaseDirectory, _config.CliPath);
 
-        var attachmentArgs = attachments?.Count > 0
-            ? " " + string.Join(" ", attachments.Select(a => $"--attachment \"{Path.GetFullPath(a)}\""))
-            : "";
+        try
+        {
+            await RunSignalCliAsync(cliPath,
+                ["-u", _config.Sender, "receive", "--timeout", "1", "--ignore-attachments"],
+                timeoutSeconds: 5);
+        }
+        catch { /* receive ist optional – Fehler ignorieren */ }
 
+        var sendArgs = new List<string> { "-u", _config.Sender, "send", "-m", message };
+        if (attachments?.Count > 0)
+            foreach (var a in attachments)
+            {
+                sendArgs.Add("--attachment");
+                sendArgs.Add(Path.GetFullPath(a));
+            }
+        sendArgs.Add(_config.Recipient);
+
+        await RunSignalCliAsync(cliPath, sendArgs);
+    }
+
+    private async Task RunSignalCliAsync(string cliPath, IEnumerable<string> arguments, int timeoutSeconds = TimeoutSeconds)
+    {
         var psi = new ProcessStartInfo
         {
             FileName = cliPath,
-            Arguments = $"send -m \"{message}\"{attachmentArgs} -u {_config.Sender} {_config.Recipient}",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true
         };
+        foreach (var arg in arguments)
+            psi.ArgumentList.Add(arg);
 
-        using var process = Process.Start(psi)
-            ?? throw new InvalidOperationException("signal-cli konnte nicht gestartet werden.");
+        Process? process;
+        try
+        {
+            process = Process.Start(psi);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
+        {
+            throw new Exception(
+                $"signal-cli konnte nicht gestartet werden – Pfad prüfen: \"{cliPath}\"\n" +
+                $"signal-cli herunterladen: https://github.com/AsamK/signal-cli/releases");
+        }
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutSeconds));
+        if (process == null)
+            throw new Exception(
+                $"signal-cli konnte nicht gestartet werden – Pfad prüfen: \"{cliPath}\"\n" +
+                $"signal-cli herunterladen: https://github.com/AsamK/signal-cli/releases");
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
         try
         {
             await process.WaitForExitAsync(cts.Token);
@@ -40,7 +73,7 @@ public class SignalNotificationService : INotificationService
         catch (OperationCanceledException)
         {
             process.Kill();
-            throw new Exception($"signal-cli hat nach {TimeoutSeconds}s nicht geantwortet (Timeout).");
+            throw new Exception($"signal-cli hat nach {timeoutSeconds}s nicht geantwortet (Timeout).");
         }
 
         if (process.ExitCode != 0)

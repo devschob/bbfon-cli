@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Net.Codecrete.QrCodeGenerator;
 
 namespace BBFon.Services;
@@ -10,8 +12,10 @@ public sealed class LinkService
 
     public LinkService(SignalConfig config) => _config = config;
 
-    public async Task RunAsync()
+    public async Task RunAsync(string? phoneNumber = null)
     {
+        if (phoneNumber != null)
+            SaveNumberToAppSettings(phoneNumber);
         var cliPath = Path.IsPathRooted(_config.CliPath)
             ? _config.CliPath
             : Path.Combine(AppContext.BaseDirectory, _config.CliPath);
@@ -87,6 +91,24 @@ public sealed class LinkService
             ConsoleLog.Success("[BBFon] Erfolgreich verknüpft! BBFon kann jetzt Signal nutzen.");
         else
             ConsoleLog.Error($"[BBFon] Verlinkung fehlgeschlagen (Exit {process.ExitCode}). Signal-App nochmal versuchen.");
+    }
+
+    private static void SaveNumberToAppSettings(string phoneNumber)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        var json = File.ReadAllText(path);
+        var root = JsonNode.Parse(json)?.AsObject()
+            ?? throw new InvalidOperationException("appsettings.json konnte nicht geparst werden.");
+
+        var signal = root["Signal"]?.AsObject() ?? new JsonObject();
+        signal["Sender"]    = phoneNumber;
+        signal["Recipient"] = phoneNumber;
+        root["Signal"] = signal;
+
+        var opts = new JsonSerializerOptions { WriteIndented = true };
+        File.WriteAllText(path, root.ToJsonString(opts));
+
+        ConsoleLog.Info($"[BBFon] Nummer {phoneNumber} in appsettings.json eingetragen (Sender + Recipient).");
     }
 
     private static void DisplayQrCode(string url)
