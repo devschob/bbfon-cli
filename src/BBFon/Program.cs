@@ -34,6 +34,15 @@ if (args.Contains("--help") || args.Contains("-h"))
           bbfon --provider Telegram --link <BOT_TOKEN>
           bbfon --test
           bbfon --debug
+
+        Requirements:
+          Signal:   Java 25+       https://adoptium.net/
+                    signal-cli 0.14.1  https://github.com/AsamK/signal-cli/releases
+          Telegram: Bot-Token von @BotFather (t.me/BotFather)
+                      → /newbot eingeben, Name & Username wählen
+                      → Token aus der Antwort kopieren
+                      → bbfon --provider Telegram --link <TOKEN>
+          Video:    ffmpeg 8+      https://ffmpeg.org/download.html
         """);
     return;
 }
