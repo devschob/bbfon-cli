@@ -19,8 +19,8 @@ if (args.Contains("--help") || args.Contains("-h"))
           bbfon [Optionen]
 
         Optionen:
-          --provider <Signal|Telegram>   Benachrichtigungs-Provider setzen
-          --link [Telefonnummer]         Signal-Gerät verknüpfen / Telegram-Token setzen
+          --provider <Signal|Telegram|WhatsApp>   Benachrichtigungs-Provider setzen
+          --link [Telefonnummer]                  Signal/WhatsApp-Gerät verknüpfen / Telegram-Token setzen
           --test                         Testnachricht senden und beenden
           --calibrate                    Hintergrundlärm messen, Threshold vorschlagen
           --list-video                   Verfügbare Kamera-Geräte auflisten
@@ -32,6 +32,7 @@ if (args.Contains("--help") || args.Contains("-h"))
         Beispiele:
           bbfon --provider Signal --link +4912345678
           bbfon --provider Telegram --link <BOT_TOKEN>
+          bbfon --provider WhatsApp --link +4912345678
           bbfon --test
           bbfon --debug
 
@@ -42,6 +43,7 @@ if (args.Contains("--help") || args.Contains("-h"))
                       → /newbot eingeben, Name & Username wählen
                       → Token aus der Antwort kopieren
                       → bbfon --provider Telegram --link <TOKEN>
+          WhatsApp: mudslide.exe   https://github.com/robvanderleek/mudslide/releases
           Video:    ffmpeg 8+      https://ffmpeg.org/download.html
         """);
     return;
@@ -63,9 +65,10 @@ var  providerArg       = providerArgIdx >= 0 && providerArgIdx + 1 < args.Length
 if (providerArg != null)
 {
     if (!providerArg.Equals("Signal", StringComparison.OrdinalIgnoreCase) &&
-        !providerArg.Equals("Telegram", StringComparison.OrdinalIgnoreCase))
+        !providerArg.Equals("Telegram", StringComparison.OrdinalIgnoreCase) &&
+        !providerArg.Equals("WhatsApp", StringComparison.OrdinalIgnoreCase))
     {
-        ConsoleLog.Error($"[BBFon] Unbekannter Provider \"{providerArg}\". Erlaubt: Signal, Telegram");
+        ConsoleLog.Error($"[BBFon] Unbekannter Provider \"{providerArg}\". Erlaubt: Signal, Telegram, WhatsApp");
         return;
     }
     SetProviderInAppSettings(providerArg);
@@ -106,7 +109,13 @@ if (linkMode)
         return;
     }
 
-    ConsoleLog.Error($"[BBFon] --link ist nur für Provider \"Signal\" oder \"Telegram\" verfügbar (aktuell: \"{appConfig.Provider}\").");
+    if (appConfig.Provider.Equals("WhatsApp", StringComparison.OrdinalIgnoreCase))
+    {
+        await new WhatsAppLinkService(appConfig.WhatsApp).RunAsync(linkToken);
+        return;
+    }
+
+    ConsoleLog.Error($"[BBFon] --link ist nur für Provider \"Signal\", \"Telegram\" oder \"WhatsApp\" verfügbar (aktuell: \"{appConfig.Provider}\").");
     return;
 }
 
@@ -175,6 +184,7 @@ INotificationService baseNotification = debugMode
     {
         "signal"   => (INotificationService)new SignalNotificationService(appConfig.Signal),
         "telegram" => new TelegramNotificationService(appConfig.Telegram),
+        "whatsapp" => new WhatsAppNotificationService(appConfig.WhatsApp),
         _          => throw new InvalidOperationException($"Unbekannter Provider \"{appConfig.Provider}\".")
     };
 

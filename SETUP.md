@@ -1,6 +1,6 @@
-# BBFon – Mikrofon-Überwachung mit Signal/Telegram-Benachrichtigung
+# BBFon – Mikrofon-Überwachung mit Signal/Telegram/WhatsApp-Benachrichtigung
 
-BBFon überwacht ein Mikrofon des Windows-PCs und sendet eine Nachricht über Signal oder Telegram, sobald die Lautstärke einen konfigurierbaren Schwellwert überschreitet. Zwischen zwei Nachrichten gilt ein Cooldown-Zeitraum, um Spam zu verhindern.
+BBFon überwacht ein Mikrofon des Windows-PCs und sendet eine Nachricht über Signal, Telegram oder WhatsApp, sobald die Lautstärke einen konfigurierbaren Schwellwert überschreitet. Zwischen zwei Nachrichten gilt ein Cooldown-Zeitraum, um Spam zu verhindern.
 
 ---
 
@@ -11,10 +11,11 @@ BBFon überwacht ein Mikrofon des Windows-PCs und sendet eine Nachricht über Si
 3. [Konfiguration (appsettings.json)](#3-konfiguration-appsettingsjson)
 4. [Telegram einrichten](#4-telegram-einrichten)
 5. [Signal einrichten](#5-signal-einrichten)
-6. [Starten und Bedienen](#6-starten-und-bedienen)
-7. [Projektstruktur](#7-projektstruktur)
-8. [Technische Details](#8-technische-details)
-9. [Fehlerbehebung](#9-fehlerbehebung)
+6. [WhatsApp einrichten](#6-whatsapp-einrichten)
+7. [Starten und Bedienen](#7-starten-und-bedienen)
+8. [Projektstruktur](#8-projektstruktur)
+9. [Technische Details](#9-technische-details)
+10. [Fehlerbehebung](#10-fehlerbehebung)
 
 ---
 
@@ -27,6 +28,7 @@ BBFon überwacht ein Mikrofon des Windows-PCs und sendet eine Nachricht über Si
 | Mikrofon | Aufnahmegerät in Windows konfiguriert |
 | Für Signal | Java 17+ (für signal-cli) |
 | Für Telegram | Internetzugang, Telegram-Account |
+| Für WhatsApp | mudslide.exe ([Download](https://github.com/robvanderleek/mudslide/releases)), WhatsApp-Account |
 | Für Komprimierung / Kamera | FFmpeg (siehe [FFMPEG.md](FFMPEG.md)) |
 
 ---
@@ -123,7 +125,7 @@ Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen. Änd
 | `Threshold` | `float` (0–1000) | Lautstärke-Schwellwert. `0` = Stille, `1000` = maximale Lautstärke. Empfehlung: `20`–`100`. Mit `--calibrate` bestimmen. |
 | `CooldownSeconds` | `int` | Mindestabstand in Sekunden zwischen zwei Nachrichten. |
 | `Message` | `string` | Text der gesendeten Nachricht. |
-| `Provider` | `string` | Aktiver Dienst: `"Telegram"` oder `"Signal"` (Groß-/Kleinschreibung egal). |
+| `Provider` | `string` | Aktiver Dienst: `"Telegram"`, `"Signal"` oder `"WhatsApp"` (Groß-/Kleinschreibung egal). |
 | `FfmpegPath` | `string` | Pfad zu `ffmpeg.exe`. Relativ zur EXE oder absolut. Wird von Kamera und Komprimierung genutzt. |
 | `AudioDevice` | `string` | Name des Mikrofons (Teilstring genügt). Leer = Standard-Mikrofon. Mit `--list-audio` anzeigen. |
 | `Startup.Enabled` | `bool` | Beim Start eine Nachricht senden. |
@@ -155,6 +157,9 @@ Die `appsettings.json` liegt **neben der EXE** und wird beim Start geladen. Änd
 | `Signal.Recipient` | `string` | Ziel-Handynummer (Format: `+49...`). |
 | `Telegram.BotToken` | `string` | Token des Telegram-Bots (von BotFather). Wird durch `--link` automatisch gesetzt. |
 | `Telegram.ChatId` | `string` | Chat-ID des Empfängers. Wird durch `--link` automatisch gesetzt. |
+| `WhatsApp.CliPath` | `string` | Pfad zu `mudslide.exe`. Relativ zur EXE oder absolut. Standard: `"mudslide.exe"`. |
+| `WhatsApp.Sender` | `string` | Eigene WhatsApp-Nummer (Format: `+49...`). Wird durch `--link` automatisch gesetzt. |
+| `WhatsApp.Recipient` | `string` | Ziel-WhatsApp-Nummer (Format: `+49...`). Wird durch `--link` automatisch gesetzt. |
 
 ### Schwellwert bestimmen
 
@@ -170,6 +175,7 @@ Die Skala geht von `0` (Stille) bis `1000` (maximale Lautstärke). Empfehlung: `
 ---
 
 ## 4. Telegram einrichten
+
 
 Detaillierte Anleitung: [TELEGRAM.md](TELEGRAM.md)
 
@@ -305,7 +311,33 @@ BBFon.exe --test
 
 ---
 
-## 6. Starten und Bedienen
+## 6. WhatsApp einrichten
+
+Detaillierte Anleitung: [WHATSAPP.md](WHATSAPP.md)
+
+### Schritt 1 – mudslide.exe herunterladen
+
+1. Aktuelle Version von https://github.com/robvanderleek/mudslide/releases herunterladen
+2. `mudslide.exe` neben die `BBFon.exe` legen
+
+### Schritt 2 – Mit BBFon verknüpfen
+
+```cmd
+BBFon.exe --provider WhatsApp --link +4917612345678
+```
+
+BBFon trägt die Nummer automatisch in `appsettings.json` ein (Sender + Recipient) und startet `mudslide login`. Den angezeigten QR-Code in der WhatsApp-App scannen:
+`Einstellungen → Verknüpfte Geräte → Gerät hinzufügen`
+
+### Schritt 3 – Verbindung testen
+
+```cmd
+BBFon.exe --test
+```
+
+---
+
+## 7. Starten und Bedienen
 
 ### Parameter-Übersicht
 
@@ -314,8 +346,8 @@ BBFon.exe --test
 | `--debug` | `-d` | Debug-Modus: keine Nachrichten, ausführliche Konsolenausgabe |
 | `--test` | – | Sendet sofort eine Testnachricht und beendet sich |
 | `--calibrate` | – | Misst 10s Hintergrundrauschen, schlägt `Threshold`-Wert vor und zeigt Balkendiagramm |
-| `--provider <Signal\|Telegram>` | – | Setzt den aktiven Provider in `appsettings.json` und beendet sich (kombinierbar mit `--link` / `--test`) |
-| `--link [Wert]` | – | **Signal:** `--link +4917612345678` – Nummer in appsettings.json speichern und QR-Code zur Verlinkung anzeigen. **Telegram:** `--link <TOKEN>` – Chat-ID ermitteln und Token + Chat-ID in appsettings.json speichern |
+| `--provider <Signal\|Telegram\|WhatsApp>` | – | Setzt den aktiven Provider in `appsettings.json` und beendet sich (kombinierbar mit `--link` / `--test`) |
+| `--link [Wert]` | – | **Signal/WhatsApp:** `--link +4917612345678` – Nummer in appsettings.json speichern und QR-Code zur Verlinkung anzeigen. **Telegram:** `--link <TOKEN>` – Chat-ID ermitteln und Token + Chat-ID in appsettings.json speichern |
 | `--list-audio` | – | Verfügbare Mikrofon-/Audio-Eingabegeräte anzeigen |
 | `--list-video` | – | Verfügbare DirectShow-Kamerageräte anzeigen (benötigt FFmpeg) |
 
@@ -411,12 +443,13 @@ Der `|` im Balken markiert den empfohlenen Schwellwert. Werte über dem Schwellw
 
 ---
 
-## 7. Projektstruktur
+## 8. Projektstruktur
 
 ```
 bbfon/
 ├── SETUP.md                          ← diese Datei
 ├── TELEGRAM.md                       ← Telegram-Einrichtung (Details)
+├── WHATSAPP.md                       ← WhatsApp-Einrichtung (Details)
 ├── FFMPEG.md                         ← FFmpeg-Installation & Kamera-Konfiguration
 ├── SIGNAL-CLI.md                     ← Signal-CLI-Einrichtung (Details)
 └── src/
@@ -445,7 +478,7 @@ bbfon/
 
 ---
 
-## 8. Technische Details
+## 9. Technische Details
 
 ### Lautstärke-Berechnung (RMS)
 
@@ -565,7 +598,7 @@ Weitere Details: [TELEGRAM.md](TELEGRAM.md)
 
 ---
 
-## 9. Fehlerbehebung
+## 10. Fehlerbehebung
 
 ### Kein Mikrofon erkannt / falsches Gerät
 

@@ -50,8 +50,17 @@ public static class ConfigValidator
                     errors.Add("Signal.CliPath ist leer");
                 break;
 
+            case "whatsapp":
+                if (string.IsNullOrWhiteSpace(cfg.WhatsApp.CliPath))
+                    errors.Add("WhatsApp.CliPath ist leer");
+                if (string.IsNullOrWhiteSpace(cfg.WhatsApp.Sender))
+                    errors.Add("WhatsApp.Sender ist leer");
+                if (string.IsNullOrWhiteSpace(cfg.WhatsApp.Recipient))
+                    errors.Add("WhatsApp.Recipient ist leer");
+                break;
+
             default:
-                errors.Add($"Unbekannter Provider \"{cfg.Provider}\". Erlaubt: Signal, Telegram");
+                errors.Add($"Unbekannter Provider \"{cfg.Provider}\". Erlaubt: Signal, Telegram, WhatsApp");
                 break;
         }
 

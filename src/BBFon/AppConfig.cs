@@ -14,6 +14,7 @@ public class AppConfig
     public BatteryConfig Battery { get; set; } = new();
     public SignalConfig Signal { get; set; } = new();
     public TelegramConfig Telegram { get; set; } = new();
+    public WhatsAppConfig WhatsApp { get; set; } = new();
 }
 
 public class TriggerConfig
@@ -86,4 +87,11 @@ public class TelegramConfig
 {
     public string BotToken { get; set; } = "";
     public string ChatId { get; set; } = "";
+}
+
+public class WhatsAppConfig
+{
+    public string CliPath { get; set; } = "mudslide.exe";
+    public string Sender { get; set; } = "";
+    public string Recipient { get; set; } = "";
 }
