@@ -465,10 +465,12 @@ bbfon/
             ├── AudioCompressorService.cs         ← Audio-Komprimierung via FFmpeg
             ├── SignalNotificationService.cs      ← Signal-Versand via signal-cli
             ├── TelegramNotificationService.cs    ← Telegram-Versand via Bot API
+            ├── WhatsAppNotificationService.cs    ← WhatsApp-Versand via mudslide
             ├── RetryNotificationService.cs       ← Retry + Netzwerk-Wartelogik
             ├── DebugNotificationService.cs       ← Konsolen-Ausgabe für Debug-Modus
             ├── LinkService.cs                    ← Signal-Verlinkung (QR-Code)
             ├── TelegramLinkService.cs            ← Telegram Chat-ID-Ermittlung & appsettings-Update
+            ├── WhatsAppLinkService.cs            ← WhatsApp-Login via mudslide (QR-Code)
             ├── BatteryMonitorService.cs          ← Batterie-Überwachung (Win32 API)
             ├── CalibrateService.cs               ← Threshold-Kalibrierung mit Balkendiagramm
             ├── SleepPreventionService.cs         ← Schlafmodus verhindern
@@ -566,6 +568,7 @@ Mit `Recording.SendAttachments: true` werden die fertigen Aufnahme-Dateien nach 
 
 - Telegram: per `sendDocument`-API
 - Signal: per `--attachment`-Flag an signal-cli
+- WhatsApp: per `mudslide send-file`
 - Bei aktiver Komprimierung: komprimierte Datei statt WAV
 
 ### Cooldown-Mechanismus
@@ -619,6 +622,13 @@ Weitere Details: [TELEGRAM.md](TELEGRAM.md)
 - BBFon zeigt beim Start automatisch eine Warnung, wenn Java fehlt oder die Version zu alt ist
 - Pfad zu `signal-cli.bat` korrekt? Standard bei Installation neben der EXE: `signal-cli\bin\signal-cli.bat`
 - Nummer registriert und verifiziert? Oder als verknüpftes Gerät eingerichtet (`BBFon.exe --link +49...`)?
+
+### WhatsApp: mudslide startet nicht / Nachricht kommt nicht an
+
+- `mudslide.exe` neben der `BBFon.exe`? Oder `WhatsApp.CliPath` in `appsettings.json` auf den korrekten Pfad setzen
+- Einmalig verknüpft? `BBFon.exe --provider WhatsApp --link +49...` ausführen und QR-Code scannen
+- Session abgelaufen? `--link` erneut ausführen, um eine neue Verknüpfung herzustellen
+- Weitere Details: [WHATSAPP.md](WHATSAPP.md)
 
 ### Lautstärke immer 0.000
 

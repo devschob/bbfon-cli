@@ -11,6 +11,7 @@ public class WhatsAppNotificationService : INotificationService
 
     public async Task SendAsync(string message, IReadOnlyList<string>? attachments = null)
     {
+        ConsoleLog.Info("[BBFon] Sende WhatsApp...");
         var cliPath = Path.IsPathRooted(_config.CliPath)
             ? _config.CliPath
             : Path.Combine(AppContext.BaseDirectory, _config.CliPath);

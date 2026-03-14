@@ -22,15 +22,20 @@ public sealed class WhatsAppLinkService
         ConsoleLog.Info("[BBFon] Starte WhatsApp-Verlinkung...");
         ConsoleLog.Info("[BBFon] mudslide wird gestartet, bitte warten...\n");
 
+        // Kein Redirect – mudslide schreibt QR-Code direkt in die Konsole
         var psi = new ProcessStartInfo
         {
             FileName = cliPath,
             UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
+            RedirectStandardOutput = false,
+            RedirectStandardError = false,
             CreateNoWindow = false
         };
         psi.ArgumentList.Add("login");
+
+        ConsoleLog.Info("[BBFon] Scanne den QR-Code mit deiner WhatsApp-App:");
+        ConsoleLog.Info("[BBFon]   WhatsApp → Einstellungen → Verknüpfte Geräte → Gerät hinzufügen");
+        ConsoleLog.Info("[BBFon] Warte auf Verlinkung...\n");
 
         Process? process;
         try
@@ -49,29 +54,6 @@ public sealed class WhatsAppLinkService
             ConsoleLog.Error($"[BBFon] mudslide konnte nicht gestartet werden – Pfad prüfen: \"{cliPath}\"");
             return;
         }
-
-        // stdout und stderr direkt an die Konsole weiterleiten (QR-Code wird von mudslide selbst gerendert)
-        _ = Task.Run(async () =>
-        {
-            while (!process.StandardOutput.EndOfStream)
-            {
-                var line = await process.StandardOutput.ReadLineAsync();
-                if (line != null) Console.WriteLine(line);
-            }
-        });
-
-        _ = Task.Run(async () =>
-        {
-            while (!process.StandardError.EndOfStream)
-            {
-                var line = await process.StandardError.ReadLineAsync();
-                if (line != null) Console.Error.WriteLine(line);
-            }
-        });
-
-        ConsoleLog.Info("[BBFon] Scanne den QR-Code mit deiner WhatsApp-App:");
-        ConsoleLog.Info("[BBFon]   WhatsApp → Einstellungen → Verknüpfte Geräte → Gerät hinzufügen");
-        ConsoleLog.Info("[BBFon] Warte auf Verlinkung...\n");
 
         await process.WaitForExitAsync();
 

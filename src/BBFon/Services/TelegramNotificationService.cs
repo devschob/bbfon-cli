@@ -12,6 +12,7 @@ public class TelegramNotificationService : INotificationService
 
     public async Task SendAsync(string message, IReadOnlyList<string>? attachments = null)
     {
+        ConsoleLog.Info("[BBFon] Sende Telegram...");
         if (!string.IsNullOrEmpty(message))
             await SendTextAsync(message);
 
