@@ -55,19 +55,50 @@ public class WhatsAppNotificationService : INotificationService
                 $"mudslide herunterladen: https://github.com/robvanderleek/mudslide/releases");
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-        try
+        var doneTcs = new TaskCompletionSource<bool>();
+
+        // Stdout und Stderr live lesen; bei "Done" sofort als gesendet werten
+        var outputLines = new System.Collections.Concurrent.ConcurrentBag<string>();
+        Task ReadLinesAsync(StreamReader reader) => Task.Run(async () =>
         {
-            await process.WaitForExitAsync(cts.Token);
+            string? line;
+            while ((line = await reader.ReadLineAsync()) != null)
+            {
+                outputLines.Add(line);
+                if (line.Contains("Done", StringComparison.OrdinalIgnoreCase))
+                    doneTcs.TrySetResult(true);
+            }
+        });
+
+        var stdoutTask = ReadLinesAsync(process.StandardOutput);
+        var stderrTask = ReadLinesAsync(process.StandardError);
+
+        var exitTask = process.WaitForExitAsync(cts.Token);
+
+        // Warten auf: "Done" in Ausgabe ODER Prozessende
+        var completed = await Task.WhenAny(doneTcs.Task, exitTask);
+
+        if (completed == doneTcs.Task)
+        {
+            ConsoleLog.Success("[BBFon] WhatsApp Nachricht gesendet.");
+            using var graceCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try { await process.WaitForExitAsync(graceCts.Token); }
+            catch (OperationCanceledException) { process.Kill(); }
+            return;
         }
-        catch (OperationCanceledException)
+
+        // Prozess ist beendet – Exit-Code prüfen
+        if (cts.IsCancellationRequested)
         {
             process.Kill();
             throw new Exception($"mudslide hat nach {timeoutSeconds}s nicht geantwortet (Timeout).");
         }
 
+        await Task.WhenAll(stdoutTask, stderrTask);
+
         if (process.ExitCode != 0)
         {
-            var err = await process.StandardError.ReadToEndAsync();
+            var err = string.Join("\n", outputLines);
             throw new Exception($"mudslide Fehler (Exit {process.ExitCode}): {err}");
         }
     }
