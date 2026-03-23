@@ -233,7 +233,10 @@ Console.CancelKeyPress += (_, e) =>
     cts.Cancel();
 };
 
-// Beenden mit Q oder Escape
+volatile bool calibrateRequested = false;
+CancellationTokenSource? monitorCts = null;
+
+// Beenden mit Q oder Escape | Kalibrieren mit C
 _ = Task.Run(() =>
 {
     try
@@ -245,6 +248,11 @@ _ = Task.Run(() =>
                 var key = Console.ReadKey(intercept: true);
                 if (key.Key is ConsoleKey.Q or ConsoleKey.Escape)
                     cts.Cancel();
+                else if (key.Key == ConsoleKey.C)
+                {
+                    calibrateRequested = true;
+                    monitorCts?.Cancel();
+                }
             }
             Thread.Sleep(50);
         }
@@ -265,8 +273,23 @@ CameraRecorderService? camera = (appConfig.Camera.Enabled)
     ? new CameraRecorderService(appConfig.Camera, appConfig.Recording, appConfig.FfmpegPath)
     : null;
 
-using var monitor = new AudioMonitorService(appConfig, notification, debugMode, camera);
-monitor.Start(cts.Token);
+while (!cts.IsCancellationRequested)
+{
+    calibrateRequested = false;
+    monitorCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+
+    using (var monitor = new AudioMonitorService(appConfig, notification, debugMode, camera))
+        monitor.Start(monitorCts.Token);
+
+    monitorCts.Dispose();
+    monitorCts = null;
+
+    if (!calibrateRequested || cts.IsCancellationRequested) break;
+
+    Console.WriteLine();
+    await new CalibrateService().RunAsync();
+    ConsoleLog.Info("[BBFon] Kalibrierung abgeschlossen. Setze Überwachung fort...\n");
+}
 
 ConsoleLog.Info("\n[BBFon] Beendet.");
 

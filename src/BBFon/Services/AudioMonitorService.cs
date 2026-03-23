@@ -84,7 +84,7 @@ public sealed class AudioMonitorService : IDisposable
         if (_debugMode)
             ConsoleLog.Debug("[BBFon] DEBUG-Modus: Nachrichten werden NICHT gesendet.");
 
-        ConsoleLog.Info("[BBFon] Beenden: Strg+C, Q oder Esc\n");
+        ConsoleLog.Info("[BBFon] Beenden: Strg+C, Q oder Esc  |  Kalibrieren: C\n");
 
         ct.WaitHandle.WaitOne();
 
